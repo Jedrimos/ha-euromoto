@@ -10,7 +10,7 @@ from typing import Any
 import aiohttp
 from bs4 import BeautifulSoup
 
-from .const import BASE_URL, CALENDAR_URL, COUNTRY_HINTS, TRACK_URL_TEMPLATE
+from .const import BASE_URL, CALENDAR_URL, COUNTRY_HINTS, SCRAPER_HEADERS, TRACK_URL_TEMPLATE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _parse_date_range(raw: str) -> tuple[datetime, datetime] | None:
         return None
     g = m.groups()
     try:
-        if g[0]:  # range form: s_day, s_month_opt, e_day, e_month, year
+        if g[0]:
             s_day = int(g[0])
             e_day = int(g[2])
             e_month = int(g[3])
@@ -47,7 +47,7 @@ def _parse_date_range(raw: str) -> tuple[datetime, datetime] | None:
             s_month = int(g[1]) if g[1] else e_month
             start = datetime(year, s_month, s_day)
             end = datetime(year, e_month, e_day)
-        else:  # single day form: s_day, s_month, year
+        else:
             s_day = int(g[5])
             s_month = int(g[6])
             year = int(g[7])
@@ -64,35 +64,82 @@ def _guess_country(name: str) -> str:
     return "DE"
 
 
+def _normalise_key(raw: str) -> str:
+    return (
+        raw.lower().strip().rstrip(":")
+        .replace(" ", "_")
+        .replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("ß", "ss")
+    )
+
+
+def _coerce_value(val_raw: str) -> Any:
+    """Try to coerce a string to int/float, keep as string otherwise."""
+    cleaned = val_raw.replace(",", ".").split()[0] if val_raw else ""
+    if cleaned:
+        try:
+            return float(cleaned) if "." in cleaned else int(cleaned)
+        except ValueError:
+            pass
+    return val_raw or None
+
+
 def _parse_track_details(html: str) -> dict[str, Any]:
-    """Parse the facts table on a track detail page."""
+    """Parse facts from a track detail page – tries multiple HTML structures."""
     soup = BeautifulSoup(html, "html.parser")
     details: dict[str, Any] = {}
 
-    # The facts table uses <tr><td>Label:</td><td>Value</td></tr>
+    # Strategy 1: <table> with two-column rows
     for row in soup.find_all("tr"):
-        cells = row.find_all("td")
-        if len(cells) < 2:
-            continue
-        key_raw = cells[0].get_text(strip=True).rstrip(":")
-        val_raw = cells[1].get_text(strip=True)
-        if not key_raw:
-            continue
-        key = (
-            key_raw.lower()
-            .replace(" ", "_")
-            .replace("ä", "ae")
-            .replace("ö", "oe")
-            .replace("ü", "ue")
-            .replace("ß", "ss")
-        )
-        # Try numeric coercion
-        numeric = val_raw.replace(",", ".").split()[0] if val_raw else None
-        try:
-            val: Any = float(numeric) if "." in numeric else int(numeric)
-        except (ValueError, TypeError):
-            val = val_raw or None
-        details[key] = val
+        cells = row.find_all(["td", "th"])
+        if len(cells) >= 2:
+            key_raw = cells[0].get_text(strip=True)
+            val_raw = cells[1].get_text(strip=True)
+            if key_raw and val_raw:
+                details[_normalise_key(key_raw)] = _coerce_value(val_raw)
+
+    # Strategy 2: <dl>/<dt>/<dd> definition lists
+    for dl in soup.find_all("dl"):
+        dts = dl.find_all("dt")
+        dds = dl.find_all("dd")
+        for dt, dd in zip(dts, dds):
+            key_raw = dt.get_text(strip=True)
+            val_raw = dd.get_text(strip=True)
+            if key_raw and val_raw:
+                details[_normalise_key(key_raw)] = _coerce_value(val_raw)
+
+    # Strategy 3: <div> pairs where first child looks like a label
+    for div in soup.find_all("div"):
+        children = [c for c in div.children if hasattr(c, "get_text")]
+        if len(children) == 2:
+            key_raw = children[0].get_text(strip=True)
+            val_raw = children[1].get_text(strip=True)
+            # Only treat as label/value if key ends with ":" or is short
+            if key_raw and val_raw and (key_raw.endswith(":") or len(key_raw) < 30):
+                k = _normalise_key(key_raw)
+                if k and k not in details:
+                    details[k] = _coerce_value(val_raw)
+
+    # Strategy 4: regex scan of raw text for known patterns
+    text = soup.get_text(" ", strip=True)
+    _PATTERNS = [
+        (r"[Ll][äa]nge[:\s]+(\d+[,\.]\d+)\s*km", "laenge"),
+        (r"Rechtskurven[:\s]+(\d+)", "rechtskurven"),
+        (r"Linkskurven[:\s]+(\d+)", "linkskurven"),
+        (r"[Ll][äa]ngste\s+Gerade[:\s]+(\d+)\s*m", "laengste_gerade"),
+        (r"Mindestbreite[:\s]+(\d+)\s*m", "mindestbreite"),
+    ]
+    for pattern, key in _PATTERNS:
+        if key not in details:
+            m = re.search(pattern, text)
+            if m:
+                raw = m.group(1).replace(",", ".")
+                try:
+                    details[key] = float(raw) if "." in raw else int(raw)
+                except ValueError:
+                    pass
 
     return details
 
@@ -103,7 +150,11 @@ class EuroMotoScraper:
 
     async def _get(self, url: str) -> str | None:
         try:
-            async with self._session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with self._session.get(
+                url,
+                headers=SCRAPER_HEADERS,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
                 resp.raise_for_status()
                 return await resp.text()
         except Exception as exc:
@@ -111,7 +162,6 @@ class EuroMotoScraper:
             return None
 
     async def fetch_calendar(self) -> list[TrackEvent]:
-        """Fetch and parse the race calendar."""
         html = await self._get(CALENDAR_URL)
         if not html:
             return []
@@ -122,7 +172,6 @@ class EuroMotoScraper:
             return []
 
     async def fetch_track_details(self, slug: str) -> dict[str, Any]:
-        """Fetch and parse a track detail page."""
         url = TRACK_URL_TEMPLATE.format(slug=slug)
         html = await self._get(url)
         if not html:
@@ -153,7 +202,6 @@ def _parse_calendar(html: str) -> list[TrackEvent]:
                 continue
             date_start, date_end = parsed
 
-            # Extract link from third cell if present
             track_url: str | None = None
             if len(cells) >= 3:
                 link = cells[2].find("a", href=True)
@@ -162,7 +210,6 @@ def _parse_calendar(html: str) -> list[TrackEvent]:
                     track_url = href if href.startswith("http") else BASE_URL + href
 
             country = _guess_country(name_raw)
-            # Strip country hints from displayed name
             clean_name = name_raw
             for hint in ("(CZ)", "(NL)", "(DE)"):
                 clean_name = clean_name.replace(hint, "").strip()

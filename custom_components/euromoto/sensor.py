@@ -17,7 +17,7 @@ from .const import (
     CLASS_SUPERSPORT,
     CLASS_SPORTBIKE,
     CONF_CLASSES,
-    CONF_FAVORITE_RIDER,
+    CONF_FAVORITE_RIDERS,
     DRIVER_SENSOR_COUNT,
     NATION_FLAGS,
     TICKETS_URL,
@@ -51,8 +51,8 @@ async def async_setup_entry(
     enabled_classes: list[str] = entry.options.get(
         CONF_CLASSES, entry.data.get(CONF_CLASSES, [CLASS_SUPERBIKE, CLASS_SUPERSPORT])
     )
-    favorite_rider: int | None = entry.options.get(
-        CONF_FAVORITE_RIDER, entry.data.get(CONF_FAVORITE_RIDER)
+    favorite_riders: list[int] = entry.options.get(
+        CONF_FAVORITE_RIDERS, entry.data.get(CONF_FAVORITE_RIDERS, [])
     )
 
     entities: list[SensorEntity] = [
@@ -63,11 +63,12 @@ async def async_setup_entry(
     for cls in enabled_classes:
         entities.append(StandingsSensor(coordinator, cls))
         entities.append(StartingGridSensor(coordinator, cls))
+        entities.append(AllRidersSensor(coordinator, cls))
         for pos in range(1, DRIVER_SENSOR_COUNT + 1):
             entities.append(DriverPositionSensor(coordinator, cls, pos))
 
-    if favorite_rider is not None:
-        entities.append(FavoriteRiderSensor(coordinator, favorite_rider, enabled_classes))
+    for number in favorite_riders:
+        entities.append(FavoriteRiderSensor(coordinator, number, enabled_classes))
 
     async_add_entities(entities, update_before_add=True)
 
@@ -127,20 +128,13 @@ class NextEventSensor(_EuroMotoSensor):
         is_race_weekend = start <= today <= end
 
         details = event.details or {}
-        length = details.get("laenge")
-        if length and isinstance(length, str):
-            length = length.replace("km", "").replace(",", ".").strip()
-            try:
-                length = float(length)
-            except ValueError:
-                length = None
 
-        def _int_detail(key: str) -> int | None:
+        def _num(key: str) -> int | float | None:
             v = details.get(key)
             if v is None:
                 return None
             try:
-                return int(v)
+                return float(str(v).replace(",", ".").split()[0])
             except (ValueError, TypeError):
                 return None
 
@@ -153,10 +147,10 @@ class NextEventSensor(_EuroMotoSensor):
             "country": country,
             "country_flag": _flag(country),
             "track_url": event.track_url,
-            "track_length_km": length,
-            "track_corners_right": _int_detail("rechtskurven"),
-            "track_corners_left": _int_detail("linkskurven"),
-            "track_longest_straight_m": _int_detail("laengste_gerade"),
+            "track_length_km": _num("laenge"),
+            "track_corners_right": _num("rechtskurven"),
+            "track_corners_left": _num("linkskurven"),
+            "track_longest_straight_m": _num("laengste_gerade"),
             "track_address": details.get("adresse"),
             "tickets_url": TICKETS_URL,
             "livestream_url": LIVESTREAM_URL,
@@ -180,9 +174,7 @@ class SeasonCalendarSensor(_EuroMotoSensor):
     @property
     def native_value(self) -> int:
         today = date.today()
-        return sum(
-            1 for e in self.coordinator.data.calendar if e.date_end.date() >= today
-        )
+        return sum(1 for e in self.coordinator.data.calendar if e.date_end.date() >= today)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -190,47 +182,36 @@ class SeasonCalendarSensor(_EuroMotoSensor):
         today = date.today()
         total = len(data.calendar)
         completed = sum(1 for e in data.calendar if e.date_end.date() < today)
-        remaining = total - completed
-
-        events_list = [
-            {
-                "round": i + 1,
-                "name": e.name,
-                "date_start": e.date_start.date().isoformat(),
-                "date_end": e.date_end.date().isoformat(),
-                "country": e.country,
-                "country_flag": _flag(e.country),
-                "status": _event_status(e),
-            }
-            for i, e in enumerate(data.calendar)
-        ]
 
         return {
             "season": data.season,
             "total_events": total,
             "completed_events": completed,
-            "remaining_events": remaining,
-            "events": events_list,
+            "remaining_events": total - completed,
+            "events": [
+                {
+                    "round": i + 1,
+                    "name": e.name,
+                    "date_start": e.date_start.date().isoformat(),
+                    "date_end": e.date_end.date().isoformat(),
+                    "country": e.country,
+                    "country_flag": _flag(e.country),
+                    "status": _event_status(e),
+                }
+                for i, e in enumerate(data.calendar)
+            ],
         }
 
 
 # ---------------------------------------------------------------------------
-# Championship Standings (summary sensor – leader as state)
+# Championship Standings (summary – leader as state)
 # ---------------------------------------------------------------------------
 
 class StandingsSensor(_EuroMotoSensor):
     _attr_icon = "mdi:trophy"
 
-    _SUFFIX_MAP = {
-        CLASS_SUPERBIKE: "sbk_standings",
-        CLASS_SUPERSPORT: "ssp_standings",
-        CLASS_SPORTBIKE: "spb_standings",
-    }
-    _NAME_MAP = {
-        CLASS_SUPERBIKE: "Superbike Standings",
-        CLASS_SUPERSPORT: "Supersport Standings",
-        CLASS_SPORTBIKE: "Sportbike Standings",
-    }
+    _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_standings", CLASS_SUPERSPORT: "ssp_standings", CLASS_SPORTBIKE: "spb_standings"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "Superbike Standings", CLASS_SUPERSPORT: "Supersport Standings", CLASS_SPORTBIKE: "Sportbike Standings"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_standings"))
@@ -243,10 +224,8 @@ class StandingsSensor(_EuroMotoSensor):
 
     @property
     def native_value(self) -> str | None:
-        standings = self._standings
-        if not standings:
-            return None
-        return standings[0].get("name")
+        s = self._standings
+        return s[0].get("name") if s else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -259,7 +238,57 @@ class StandingsSensor(_EuroMotoSensor):
 
 
 # ---------------------------------------------------------------------------
-# Driver Position Sensors  (P1 … P10 per class)
+# All Riders + Bikes sensor
+# ---------------------------------------------------------------------------
+
+class AllRidersSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:account-group"
+
+    _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_riders", CLASS_SUPERSPORT: "ssp_riders", CLASS_SPORTBIKE: "spb_riders"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "Superbike Riders", CLASS_SUPERSPORT: "Supersport Riders", CLASS_SPORTBIKE: "Sportbike Riders"}
+
+    def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
+        super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_riders"))
+        self._cls = cls
+        self._attr_name = self._NAME_MAP.get(cls, f"{cls} Riders")
+
+    @property
+    def _standings(self) -> list[dict[str, Any]]:
+        return self.coordinator.data.standings.get(self._cls, [])
+
+    @property
+    def native_value(self) -> int:
+        return len(self._standings)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        riders = [
+            {
+                "pos": r.get("pos"),
+                "number": r.get("number"),
+                "name": r.get("name"),
+                "nation": r.get("nation"),
+                "flag": _flag(r.get("nation")),
+                "bike": r.get("bike"),
+                "points": r.get("points"),
+            }
+            for r in self._standings
+        ]
+        # Group by bike brand for quick overview
+        bikes: dict[str, list[str]] = {}
+        for r in self._standings:
+            bike = r.get("bike") or "Unbekannt"
+            bikes.setdefault(bike, []).append(r.get("name") or "")
+        return {
+            "class": self._cls,
+            "rider_count": len(riders),
+            "riders": riders,
+            "bikes_overview": {k: len(v) for k, v in sorted(bikes.items())},
+        }
+
+
+# ---------------------------------------------------------------------------
+# Driver Position Sensors  P1–P10
 # ---------------------------------------------------------------------------
 
 class DriverPositionSensor(_EuroMotoSensor):
@@ -273,28 +302,29 @@ class DriverPositionSensor(_EuroMotoSensor):
         self._attr_name = f"{cls} P{pos}"
 
     def _entry(self) -> dict[str, Any] | None:
-        standings = self.coordinator.data.standings.get(self._cls, [])
-        matches = [r for r in standings if r.get("pos") == self._pos]
-        return matches[0] if matches else None
+        for r in self.coordinator.data.standings.get(self._cls, []):
+            if r.get("pos") == self._pos:
+                return r
+        return None
 
     @property
     def native_value(self) -> str | None:
-        entry = self._entry()
-        return entry.get("name") if entry else None
+        e = self._entry()
+        return e.get("name") if e else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        entry = self._entry()
-        if not entry:
+        e = self._entry()
+        if not e:
             return {"position": self._pos, "class": self._cls}
-        nation = entry.get("nation")
+        nation = e.get("nation")
         return {
-            "position": entry.get("pos"),
-            "number": entry.get("number"),
+            "position": e.get("pos"),
+            "number": e.get("number"),
             "nation": nation,
             "flag": _flag(nation),
-            "bike": entry.get("bike"),
-            "points": entry.get("points"),
+            "bike": e.get("bike"),
+            "points": e.get("points"),
             "class": self._cls,
         }
 
@@ -310,16 +340,8 @@ class DriverPositionSensor(_EuroMotoSensor):
 class StartingGridSensor(_EuroMotoSensor):
     _attr_icon = "mdi:flag-checkered"
 
-    _SUFFIX_MAP = {
-        CLASS_SUPERBIKE: "sbk_grid",
-        CLASS_SUPERSPORT: "ssp_grid",
-        CLASS_SPORTBIKE: "spb_grid",
-    }
-    _NAME_MAP = {
-        CLASS_SUPERBIKE: "Superbike Starting Grid",
-        CLASS_SUPERSPORT: "Supersport Starting Grid",
-        CLASS_SPORTBIKE: "Sportbike Starting Grid",
-    }
+    _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_grid", CLASS_SUPERSPORT: "ssp_grid", CLASS_SPORTBIKE: "spb_grid"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "Superbike Starting Grid", CLASS_SUPERSPORT: "Supersport Starting Grid", CLASS_SPORTBIKE: "Sportbike Starting Grid"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_grid"))
@@ -332,19 +354,12 @@ class StartingGridSensor(_EuroMotoSensor):
 
     @property
     def native_value(self) -> str | None:
-        grid = self._grid
-        if not grid:
-            return None
-        pole = grid[0]
-        return pole.get("name")
+        g = self._grid
+        return g[0].get("name") if g else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
-            "class": self._cls,
-            "season": self.coordinator.data.season,
-            "grid": self._grid,
-        }
+        return {"class": self._cls, "season": self.coordinator.data.season, "grid": self._grid}
 
     @property
     def available(self) -> bool:
@@ -352,29 +367,19 @@ class StartingGridSensor(_EuroMotoSensor):
 
 
 # ---------------------------------------------------------------------------
-# Race Weekend
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Favorite Rider
+# Favorite Rider (one sensor per configured rider number)
 # ---------------------------------------------------------------------------
 
 class FavoriteRiderSensor(_EuroMotoSensor):
     _attr_icon = "mdi:account-heart"
 
-    def __init__(
-        self,
-        coordinator: EuroMotoCoordinator,
-        rider_number: int,
-        enabled_classes: list[str],
-    ) -> None:
+    def __init__(self, coordinator: EuroMotoCoordinator, rider_number: int, enabled_classes: list[str]) -> None:
         super().__init__(coordinator, f"favorite_rider_{rider_number}")
         self._rider_number = rider_number
         self._enabled_classes = enabled_classes
         self._attr_name = f"Lieblingsfahrer #{rider_number}"
 
     def _find(self) -> tuple[str, dict[str, Any]] | None:
-        """Return (class_name, rider_dict) or None."""
         for cls in self._enabled_classes:
             for entry in self.coordinator.data.standings.get(cls, []):
                 if entry.get("number") == self._rider_number:
@@ -388,28 +393,29 @@ class FavoriteRiderSensor(_EuroMotoSensor):
     @property
     def native_value(self) -> str | None:
         found = self._find()
-        if not found:
-            return None
-        _, entry = found
-        return entry.get("name")
+        return found[1].get("name") if found else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         found = self._find()
         if not found:
             return {"number": self._rider_number}
-        cls, entry = found
-        nation = entry.get("nation")
+        cls, e = found
+        nation = e.get("nation")
         return {
-            "number": entry.get("number"),
-            "position": entry.get("pos"),
+            "number": e.get("number"),
+            "position": e.get("pos"),
             "nation": nation,
             "flag": _flag(nation),
-            "bike": entry.get("bike"),
-            "points": entry.get("points"),
+            "bike": e.get("bike"),
+            "points": e.get("points"),
             "class": cls,
         }
 
+
+# ---------------------------------------------------------------------------
+# Race Weekend
+# ---------------------------------------------------------------------------
 
 class RaceWeekendSensor(_EuroMotoSensor):
     _attr_icon = "mdi:flag-checkered"
@@ -435,10 +441,8 @@ class RaceWeekendSensor(_EuroMotoSensor):
             if e.date_start.date() <= today <= e.date_end.date():
                 active_event = e
                 break
-
         if not active_event:
             return {}
-
         day_names = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday",
                      4: "Friday", 5: "Saturday", 6: "Sunday"}
         return {
