@@ -44,3 +44,49 @@ LIVETIMING_URL = "http://livetiming.bike-promotion.com/#/channel/c1"
 
 UPDATE_INTERVAL_NORMAL_HOURS = 6
 UPDATE_INTERVAL_RACE_MINUTES = 30
+
+# Starting grid / qualifying PDF – tried in order until one succeeds
+GRID_PDF_URL_TEMPLATES = [
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Startaufstellung%20IDM_{cls}.pdf",
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Zeittraining%20IDM_{cls}.pdf",
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Superpole%20IDM_{cls}.pdf",
+]
+GRID_PDF_BASE_URL = "https://results.bike-promotion.com/Results"
+
+# ISO 3166-1 alpha-2 → flag emoji
+NATION_FLAGS: dict[str, str] = {
+    "DE": "🇩🇪",
+    "AT": "🇦🇹",
+    "CZ": "🇨🇿",
+    "NL": "🇳🇱",
+    "ES": "🇪🇸",
+    "IT": "🇮🇹",
+    "FR": "🇫🇷",
+    "GB": "🇬🇧",
+    "CH": "🇨🇭",
+    "BE": "🇧🇪",
+    "PT": "🇵🇹",
+    "PL": "🇵🇱",
+    "HU": "🇭🇺",
+    "SK": "🇸🇰",
+    "SE": "🇸🇪",
+    "FI": "🇫🇮",
+    "DK": "🇩🇰",
+    "NO": "🇳🇴",
+    "RO": "🇷🇴",
+    "TR": "🇹🇷",
+    "UA": "🇺🇦",
+    "SL": "🇸🇮",
+    "SI": "🇸🇮",
+    "HR": "🇭🇷",
+    "GR": "🇬🇷",
+    "ZA": "🇿🇦",
+    "AU": "🇦🇺",
+    "JP": "🇯🇵",
+    "US": "🇺🇸",
+    "BR": "🇧🇷",
+    "AR": "🇦🇷",
+}
+
+# How many driver position sensors to create per class (P1 … P_DRIVER_SENSOR_COUNT)
+DRIVER_SENSOR_COUNT = 10

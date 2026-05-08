@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     DOMAIN,
-    ALL_CLASSES,
     UPDATE_INTERVAL_NORMAL_HOURS,
     UPDATE_INTERVAL_RACE_MINUTES,
 )
@@ -32,6 +31,7 @@ _LOGGER = logging.getLogger(__name__)
 class EuroMotoData:
     calendar: list[TrackEvent] = field(default_factory=list)
     standings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    grid: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     season: int = 0
 
 
@@ -79,6 +79,10 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                     cls: tg.create_task(pdf_parser.fetch_standings(cls, year))
                     for cls in self._enabled_classes
                 }
+                grid_tasks = {
+                    cls: tg.create_task(pdf_parser.fetch_starting_grid(cls, year))
+                    for cls in self._enabled_classes
+                }
         except* Exception as eg:
             for exc in eg.exceptions:
                 _LOGGER.error("Error during parallel data fetch: %s", exc)
@@ -96,14 +100,14 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                     _LOGGER.debug("Could not load details for %s: %s", slug, exc)
 
         standings = {cls: task.result() for cls, task in standings_tasks.items()}
+        grid = {cls: task.result() for cls, task in grid_tasks.items()}
 
-        # Adjust update interval based on whether we're in a race weekend
         if _is_race_weekend(calendar):
             self.update_interval = timedelta(minutes=UPDATE_INTERVAL_RACE_MINUTES)
         else:
             self.update_interval = timedelta(hours=UPDATE_INTERVAL_NORMAL_HOURS)
 
-        return EuroMotoData(calendar=calendar, standings=standings, season=year)
+        return EuroMotoData(calendar=calendar, standings=standings, grid=grid, season=year)
 
     async def async_shutdown(self) -> None:
         if self._session and not self._session.closed:

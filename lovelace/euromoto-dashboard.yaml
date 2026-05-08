@@ -1,0 +1,248 @@
+# EURO MOTO / IDM Dashboard
+# Dieses YAML in Home Assistant unter Einstellungen → Dashboards → Dashboard hinzufügen
+# einfügen (Raw-Konfigurationsmodus).
+#
+# Benötigte Integrationen: nur die euromoto Custom Component
+# Keine zusätzlichen HACS-Frontend-Karten nötig.
+
+title: IDM / EURO MOTO
+views:
+  # ============================================================
+  # ÜBERSICHT
+  # ============================================================
+  - title: Übersicht
+    icon: mdi:racing-helmet
+    path: euromoto-overview
+    cards:
+
+      # ---------- Rennwochenende-Banner (nur sichtbar wenn aktiv) ----------
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: sensor.euromoto_race_weekend
+            state: active
+        card:
+          type: markdown
+          content: >
+            ## 🏁 Rennwochenende läuft!
+
+            **{{ states('sensor.euromoto_race_weekend') | upper }}**
+            · {{ state_attr('sensor.euromoto_race_weekend', 'event_name') }}
+            {{ state_attr('sensor.euromoto_race_weekend', 'country_flag') }}
+            · {{ state_attr('sensor.euromoto_race_weekend', 'day') }}
+
+            [▶ Live-Timing]({{ state_attr('sensor.euromoto_race_weekend', 'livetiming_url') }})
+            &nbsp;·&nbsp;
+            [📺 Livestream]({{ state_attr('sensor.euromoto_race_weekend', 'livestream_url') }})
+
+      # ---------- Nächstes Event ----------
+      - type: markdown
+        title: >
+          {{ state_attr('sensor.euromoto_next_event', 'country_flag') }}
+          Nächstes Event
+        content: >
+          {% set e = 'sensor.euromoto_next_event' %}
+          {% set days = state_attr(e, 'days_until') | int %}
+
+          ## {{ states(e) }}
+
+          📅 **{{ state_attr(e, 'date_start') }}** – {{ state_attr(e, 'date_end') }}
+          {% if days == 0 %}
+          · 🟢 **Läuft gerade!**
+          {% elif days == 1 %}
+          · ⏳ Morgen!
+          {% else %}
+          · ⏳ in **{{ days }} Tagen**
+          {% endif %}
+
+          | | |
+          |---|---|
+          | 📏 Länge | {{ state_attr(e, 'track_length_km') }} km |
+          | ↩️ Rechtskurven | {{ state_attr(e, 'track_corners_right') }} |
+          | ↪️ Linkskurven | {{ state_attr(e, 'track_corners_left') }} |
+          | ➡️ Längste Gerade | {{ state_attr(e, 'track_longest_straight_m') }} m |
+          | 📍 Adresse | {{ state_attr(e, 'track_address') }} |
+
+          [🎫 Tickets]({{ state_attr(e, 'tickets_url') }})
+          &nbsp;·&nbsp;
+          [📺 Livestream]({{ state_attr(e, 'livestream_url') }})
+          &nbsp;·&nbsp;
+          [⏱️ Live-Timing]({{ state_attr(e, 'livetiming_url') }})
+
+      # ---------- Saisonkalender ----------
+      - type: markdown
+        title: 📅 Saisonkalender {{ state_attr('sensor.euromoto_season_calendar', 'season') }}
+        content: >
+          {% set events = state_attr('sensor.euromoto_season_calendar', 'events') %}
+          {% set total = state_attr('sensor.euromoto_season_calendar', 'total_events') %}
+          {% set done = state_attr('sensor.euromoto_season_calendar', 'completed_events') %}
+
+          **{{ done }}/{{ total }} Runden** abgeschlossen
+          &nbsp;·&nbsp;
+          {{ states('sensor.euromoto_season_calendar') }} verbleibend
+
+          | Rd | Status | Datum | Strecke |
+          |:---:|:---:|---|---|
+          {% for ev in events %}
+          {% if ev.status == 'completed' %}{% set icon = '✅' %}
+          {% elif ev.status == 'live' %}{% set icon = '🟢' %}
+          {% else %}{% set icon = '⏳' %}{% endif %}
+          | **{{ ev.round }}** | {{ icon }} | {{ ev.date_start }} | {{ ev.country_flag }} {{ ev.name }} |
+          {% endfor %}
+
+  # ============================================================
+  # MEISTERSCHAFT
+  # ============================================================
+  - title: Meisterschaft
+    icon: mdi:trophy
+    path: euromoto-standings
+    cards:
+
+      # ---------- Superbike ----------
+      - type: markdown
+        title: 🏆 IDM Superbike – Meisterschaft
+        content: >
+          {% set st = state_attr('sensor.euromoto_sbk_standings', 'standings') %}
+          {% if st %}
+          | Pos | # | Fahrer | Nation | Bike | Punkte |
+          |:---:|:---:|---|:---:|---|---:|
+          {% for r in st[:15] %}
+          | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} {{ r.nation }} | {{ r.bike }} | **{{ r.points }}** |
+          {% endfor %}
+          {% else %}
+          *Noch keine Daten verfügbar – Standings werden nach dem ersten Rennwochenende veröffentlicht.*
+          {% endif %}
+
+      # ---------- Supersport ----------
+      - type: markdown
+        title: 🏆 IDM Supersport – Meisterschaft
+        content: >
+          {% set st = state_attr('sensor.euromoto_ssp_standings', 'standings') %}
+          {% if st %}
+          | Pos | # | Fahrer | Nation | Bike | Punkte |
+          |:---:|:---:|---|:---:|---|---:|
+          {% for r in st[:15] %}
+          | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} {{ r.nation }} | {{ r.bike }} | **{{ r.points }}** |
+          {% endfor %}
+          {% else %}
+          *Noch keine Daten verfügbar.*
+          {% endif %}
+
+      # ---------- Sportbike (optional) ----------
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: sensor.euromoto_spb_standings
+            state_not: unavailable
+        card:
+          type: markdown
+          title: 🏆 IDM Sportbike – Meisterschaft
+          content: >
+            {% set st = state_attr('sensor.euromoto_spb_standings', 'standings') %}
+            {% if st %}
+            | Pos | # | Fahrer | Nation | Bike | Punkte |
+            |:---:|:---:|---|:---:|---|---:|
+            {% for r in st[:15] %}
+            | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} {{ r.nation }} | {{ r.bike }} | **{{ r.points }}** |
+            {% endfor %}
+            {% else %}
+            *Noch keine Daten verfügbar.*
+            {% endif %}
+
+  # ============================================================
+  # STARTAUFSTELLUNG
+  # ============================================================
+  - title: Startaufstellung
+    icon: mdi:flag-checkered
+    path: euromoto-grid
+    cards:
+
+      - type: markdown
+        title: 🏁 Superbike – Letzte Startaufstellung / Qualifying
+        content: >
+          {% set grid = state_attr('sensor.euromoto_sbk_grid', 'grid') %}
+          {% if grid %}
+          Pole: **{{ grid[0].name }}** {{ grid[0].flag }} – {{ grid[0].best_time }}
+
+          | P | # | Fahrer | Nation | Bike | Zeit |
+          |:---:|:---:|---|:---:|---|---|
+          {% for r in grid %}
+          | **{{ r.grid_pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} {{ r.nation }} | {{ r.bike }} | {{ r.best_time }} |
+          {% endfor %}
+          {% else %}
+          *Keine Startaufstellung verfügbar.*
+          *Wird nach der Superpole/Qualifikation veröffentlicht.*
+          {% endif %}
+
+      - type: markdown
+        title: 🏁 Supersport – Letzte Startaufstellung / Qualifying
+        content: >
+          {% set grid = state_attr('sensor.euromoto_ssp_grid', 'grid') %}
+          {% if grid %}
+          Pole: **{{ grid[0].name }}** {{ grid[0].flag }} – {{ grid[0].best_time }}
+
+          | P | # | Fahrer | Nation | Bike | Zeit |
+          |:---:|:---:|---|:---:|---|---|
+          {% for r in grid %}
+          | **{{ r.grid_pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} {{ r.nation }} | {{ r.bike }} | {{ r.best_time }} |
+          {% endfor %}
+          {% else %}
+          *Keine Startaufstellung verfügbar.*
+          {% endif %}
+
+  # ============================================================
+  # TOP 10 (Einzelsensoren)
+  # ============================================================
+  - title: Top 10
+    icon: mdi:podium
+    path: euromoto-top10
+    cards:
+
+      - type: entities
+        title: 🏆 Superbike Top 10
+        entities:
+          - entity: sensor.euromoto_sbk_p1
+            name: "🥇 P1"
+            secondary_info: last-changed
+          - entity: sensor.euromoto_sbk_p2
+            name: "🥈 P2"
+          - entity: sensor.euromoto_sbk_p3
+            name: "🥉 P3"
+          - entity: sensor.euromoto_sbk_p4
+            name: "  P4"
+          - entity: sensor.euromoto_sbk_p5
+            name: "  P5"
+          - entity: sensor.euromoto_sbk_p6
+            name: "  P6"
+          - entity: sensor.euromoto_sbk_p7
+            name: "  P7"
+          - entity: sensor.euromoto_sbk_p8
+            name: "  P8"
+          - entity: sensor.euromoto_sbk_p9
+            name: "  P9"
+          - entity: sensor.euromoto_sbk_p10
+            name: "  P10"
+
+      - type: entities
+        title: 🏆 Supersport Top 10
+        entities:
+          - entity: sensor.euromoto_ssp_p1
+            name: "🥇 P1"
+          - entity: sensor.euromoto_ssp_p2
+            name: "🥈 P2"
+          - entity: sensor.euromoto_ssp_p3
+            name: "🥉 P3"
+          - entity: sensor.euromoto_ssp_p4
+            name: "  P4"
+          - entity: sensor.euromoto_ssp_p5
+            name: "  P5"
+          - entity: sensor.euromoto_ssp_p6
+            name: "  P6"
+          - entity: sensor.euromoto_ssp_p7
+            name: "  P7"
+          - entity: sensor.euromoto_ssp_p8
+            name: "  P8"
+          - entity: sensor.euromoto_ssp_p9
+            name: "  P9"
+          - entity: sensor.euromoto_ssp_p10
+            name: "  P10"
