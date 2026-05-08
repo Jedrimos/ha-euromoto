@@ -5,17 +5,20 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, CONF_CLASSES, CLASS_SUPERBIKE, CLASS_SUPERSPORT
+from .const import DOMAIN, CONF_CLASSES, CONF_FAVORITE_RIDER, CLASS_SUPERBIKE, CLASS_SUPERSPORT
 from .coordinator import EuroMotoCoordinator
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.CALENDAR, Platform.WEATHER]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     enabled_classes: list[str] = entry.options.get(
         CONF_CLASSES, entry.data.get(CONF_CLASSES, [CLASS_SUPERBIKE, CLASS_SUPERSPORT])
     )
-    coordinator = EuroMotoCoordinator(hass, enabled_classes)
+    favorite_rider: int | None = entry.options.get(
+        CONF_FAVORITE_RIDER, entry.data.get(CONF_FAVORITE_RIDER)
+    )
+    coordinator = EuroMotoCoordinator(hass, enabled_classes, favorite_rider)
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
