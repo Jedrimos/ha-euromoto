@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     DOMAIN,
     TRACK_COORDINATES,
+    TRACK_DATA_FALLBACK,
     UPDATE_INTERVAL_NORMAL_HOURS,
     UPDATE_INTERVAL_RACE_MINUTES,
 )
@@ -40,9 +41,7 @@ class EuroMotoData:
 
 def _is_race_weekend(calendar: list[TrackEvent]) -> bool:
     today = date.today()
-    return any(
-        e.date_start.date() <= today <= e.date_end.date() for e in calendar
-    )
+    return any(e.date_start.date() <= today <= e.date_end.date() for e in calendar)
 
 
 def _next_event(calendar: list[TrackEvent]) -> TrackEvent | None:
@@ -57,15 +56,22 @@ def _track_slug(event: TrackEvent) -> str | None:
     return event.track_url.rstrip("/").rsplit("/", 1)[-1]
 
 
+def _merge_fallback(details: dict[str, Any], slug: str) -> dict[str, Any]:
+    """Fill missing keys from hardcoded fallback data."""
+    fallback = TRACK_DATA_FALLBACK.get(slug, {})
+    merged = {**fallback, **details}  # scraped data wins over fallback
+    return merged
+
+
 class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
     def __init__(
         self,
         hass: HomeAssistant,
         enabled_classes: list[str],
-        favorite_rider: int | None = None,
+        favorite_riders: list[int] | None = None,
     ) -> None:
         self._enabled_classes = enabled_classes
-        self._favorite_rider = favorite_rider
+        self._favorite_riders = favorite_riders or []
         self._session: aiohttp.ClientSession | None = None
         super().__init__(
             hass,
@@ -76,9 +82,8 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
     def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                headers={"User-Agent": "ha-euromoto/0.1 HomeAssistant"}
-            )
+            # No custom User-Agent here – scraper.py injects browser headers per request
+            self._session = aiohttp.ClientSession()
         return self._session
 
     async def _async_update_data(self) -> EuroMotoData:
@@ -107,19 +112,28 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
         calendar = calendar_task.result()
 
-        # Enrich events with track details (sequential to avoid hammering)
+        # Enrich events with track details; always merge with hardcoded fallback
         for event in calendar:
             slug = _track_slug(event)
             if slug:
                 try:
-                    event.details = await scraper.fetch_track_details(slug)
+                    scraped = await scraper.fetch_track_details(slug)
                 except Exception as exc:
-                    _LOGGER.debug("Could not load details for %s: %s", slug, exc)
+                    _LOGGER.debug("Could not scrape details for %s: %s", slug, exc)
+                    scraped = {}
+                event.details = _merge_fallback(scraped, slug)
+            elif event.name:
+                # Try to match fallback by name
+                name_slug = event.name.lower().replace(" ", "").replace("ü", "ue")
+                for k in TRACK_DATA_FALLBACK:
+                    if k in name_slug or name_slug in k:
+                        event.details = TRACK_DATA_FALLBACK[k].copy()
+                        break
 
         standings = {cls: task.result() for cls, task in standings_tasks.items()}
         grid = {cls: task.result() for cls, task in grid_tasks.items()}
 
-        # Fetch weather for the next event's track
+        # Weather for the next event's track
         track_weather: dict[str, Any] = {}
         next_ev = _next_event(calendar)
         if next_ev:
@@ -133,10 +147,11 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                 except Exception as exc:
                     _LOGGER.debug("Weather fetch failed for %s: %s", next_ev.name, exc)
 
-        if _is_race_weekend(calendar):
-            self.update_interval = timedelta(minutes=UPDATE_INTERVAL_RACE_MINUTES)
-        else:
-            self.update_interval = timedelta(hours=UPDATE_INTERVAL_NORMAL_HOURS)
+        self.update_interval = timedelta(
+            minutes=UPDATE_INTERVAL_RACE_MINUTES
+            if _is_race_weekend(calendar)
+            else UPDATE_INTERVAL_NORMAL_HOURS * 60
+        )
 
         return EuroMotoData(
             calendar=calendar,
