@@ -17,6 +17,7 @@ from .const import (
     CLASS_SUPERSPORT,
     CLASS_SPORTBIKE,
     CONF_CLASSES,
+    CONF_FAVORITE_RIDER,
     DRIVER_SENSOR_COUNT,
     NATION_FLAGS,
     TICKETS_URL,
@@ -50,6 +51,9 @@ async def async_setup_entry(
     enabled_classes: list[str] = entry.options.get(
         CONF_CLASSES, entry.data.get(CONF_CLASSES, [CLASS_SUPERBIKE, CLASS_SUPERSPORT])
     )
+    favorite_rider: int | None = entry.options.get(
+        CONF_FAVORITE_RIDER, entry.data.get(CONF_FAVORITE_RIDER)
+    )
 
     entities: list[SensorEntity] = [
         NextEventSensor(coordinator),
@@ -61,6 +65,9 @@ async def async_setup_entry(
         entities.append(StartingGridSensor(coordinator, cls))
         for pos in range(1, DRIVER_SENSOR_COUNT + 1):
             entities.append(DriverPositionSensor(coordinator, cls, pos))
+
+    if favorite_rider is not None:
+        entities.append(FavoriteRiderSensor(coordinator, favorite_rider, enabled_classes))
 
     async_add_entities(entities, update_before_add=True)
 
@@ -347,6 +354,62 @@ class StartingGridSensor(_EuroMotoSensor):
 # ---------------------------------------------------------------------------
 # Race Weekend
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Favorite Rider
+# ---------------------------------------------------------------------------
+
+class FavoriteRiderSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:account-heart"
+
+    def __init__(
+        self,
+        coordinator: EuroMotoCoordinator,
+        rider_number: int,
+        enabled_classes: list[str],
+    ) -> None:
+        super().__init__(coordinator, f"favorite_rider_{rider_number}")
+        self._rider_number = rider_number
+        self._enabled_classes = enabled_classes
+        self._attr_name = f"Lieblingsfahrer #{rider_number}"
+
+    def _find(self) -> tuple[str, dict[str, Any]] | None:
+        """Return (class_name, rider_dict) or None."""
+        for cls in self._enabled_classes:
+            for entry in self.coordinator.data.standings.get(cls, []):
+                if entry.get("number") == self._rider_number:
+                    return cls, entry
+        return None
+
+    @property
+    def available(self) -> bool:
+        return self._find() is not None
+
+    @property
+    def native_value(self) -> str | None:
+        found = self._find()
+        if not found:
+            return None
+        _, entry = found
+        return entry.get("name")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        found = self._find()
+        if not found:
+            return {"number": self._rider_number}
+        cls, entry = found
+        nation = entry.get("nation")
+        return {
+            "number": entry.get("number"),
+            "position": entry.get("pos"),
+            "nation": nation,
+            "flag": _flag(nation),
+            "bike": entry.get("bike"),
+            "points": entry.get("points"),
+            "class": cls,
+        }
+
 
 class RaceWeekendSensor(_EuroMotoSensor):
     _attr_icon = "mdi:flag-checkered"

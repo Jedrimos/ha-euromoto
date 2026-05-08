@@ -35,11 +35,10 @@ jobs:
           pip install \
             beautifulsoup4==4.12.3 \
             pdfplumber==0.11.4 \
-            aiohttp==3.9.5 \
+            aiohttp \
             pytest \
             pytest-asyncio \
-            reportlab \
-            homeassistant
+            reportlab
 
       - name: Run tests
         run: pytest tests/ -v --tb=short

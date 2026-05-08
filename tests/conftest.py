@@ -33,6 +33,8 @@ _HA_STUBS = [
     "homeassistant.const",
     "homeassistant.components",
     "homeassistant.components.sensor",
+    "homeassistant.components.calendar",
+    "homeassistant.components.weather",
     "homeassistant.helpers",
     "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.update_coordinator",
@@ -46,7 +48,16 @@ for _name in _HA_STUBS:
 
 # Concrete attributes that must be real objects (used in class definitions)
 _ha_const = sys.modules["homeassistant.const"]
-_ha_const.Platform = types.SimpleNamespace(SENSOR="sensor")  # type: ignore[assignment]
+_ha_const.Platform = types.SimpleNamespace(
+    SENSOR="sensor", CALENDAR="calendar", WEATHER="weather"
+)  # type: ignore[assignment]
+
+# UnitOf* constants used by weather.py
+for _unit_ns in ("UnitOfTemperature", "UnitOfSpeed", "UnitOfPressure"):
+    setattr(_ha_const, _unit_ns, types.SimpleNamespace(
+        CELSIUS="°C", KILOMETERS_PER_HOUR="km/h", HPA="hPa",
+        FAHRENHEIT="°F", METERS_PER_SECOND="m/s", INHG="inHg",
+    ))
 
 from typing import Generic, TypeVar as _TV
 _T = _TV("_T")
@@ -61,6 +72,26 @@ _ha_coordinator.UpdateFailed = Exception  # type: ignore[assignment]
 
 _ha_sensor = sys.modules["homeassistant.components.sensor"]
 _ha_sensor.SensorEntity = object  # type: ignore[assignment]
+
+_ha_calendar = sys.modules["homeassistant.components.calendar"]
+_ha_calendar.CalendarEntity = object  # type: ignore[assignment]
+
+# CalendarEvent as a real dataclass so calendar.py works in tests
+import dataclasses as _dc
+from datetime import date as _date, datetime as _dt
+
+@_dc.dataclass
+class _CalendarEvent:
+    start: _date | _dt
+    end: _date | _dt
+    summary: str
+    description: str | None = None
+    location: str | None = None
+
+_ha_calendar.CalendarEvent = _CalendarEvent  # type: ignore[assignment]
+
+_ha_weather = sys.modules["homeassistant.components.weather"]
+_ha_weather.WeatherEntity = object  # type: ignore[assignment]
 
 _ha_config = sys.modules["homeassistant.config_entries"]
 _ha_config.ConfigEntry = object  # type: ignore[assignment]

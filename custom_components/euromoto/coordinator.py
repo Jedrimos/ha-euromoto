@@ -13,11 +13,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     DOMAIN,
+    TRACK_COORDINATES,
     UPDATE_INTERVAL_NORMAL_HOURS,
     UPDATE_INTERVAL_RACE_MINUTES,
 )
 from .pdf_parser import EuroMotoPdfParser
 from .scraper import EuroMotoScraper, TrackEvent
+from .weather_client import fetch_track_weather
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class EuroMotoData:
     calendar: list[TrackEvent] = field(default_factory=list)
     standings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     grid: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    track_weather: dict[str, Any] = field(default_factory=dict)
     season: int = 0
 
 
@@ -42,13 +45,27 @@ def _is_race_weekend(calendar: list[TrackEvent]) -> bool:
     )
 
 
+def _next_event(calendar: list[TrackEvent]) -> TrackEvent | None:
+    today = date.today()
+    upcoming = [e for e in calendar if e.date_end.date() >= today]
+    return upcoming[0] if upcoming else None
+
+
+def _track_slug(event: TrackEvent) -> str | None:
+    if not event.track_url:
+        return None
+    return event.track_url.rstrip("/").rsplit("/", 1)[-1]
+
+
 class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
     def __init__(
         self,
         hass: HomeAssistant,
         enabled_classes: list[str],
+        favorite_rider: int | None = None,
     ) -> None:
         self._enabled_classes = enabled_classes
+        self._favorite_rider = favorite_rider
         self._session: aiohttp.ClientSession | None = None
         super().__init__(
             hass,
@@ -90,10 +107,10 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
         calendar = calendar_task.result()
 
-        # Enrich events with track details (lazy, in sequence to avoid hammering)
+        # Enrich events with track details (sequential to avoid hammering)
         for event in calendar:
-            if event.track_url:
-                slug = event.track_url.rstrip("/").rsplit("/", 1)[-1]
+            slug = _track_slug(event)
+            if slug:
                 try:
                     event.details = await scraper.fetch_track_details(slug)
                 except Exception as exc:
@@ -102,12 +119,32 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         standings = {cls: task.result() for cls, task in standings_tasks.items()}
         grid = {cls: task.result() for cls, task in grid_tasks.items()}
 
+        # Fetch weather for the next event's track
+        track_weather: dict[str, Any] = {}
+        next_ev = _next_event(calendar)
+        if next_ev:
+            slug = _track_slug(next_ev)
+            coords = TRACK_COORDINATES.get(slug or "")
+            if coords:
+                try:
+                    track_weather = await fetch_track_weather(
+                        session, coords[0], coords[1], next_ev.name
+                    )
+                except Exception as exc:
+                    _LOGGER.debug("Weather fetch failed for %s: %s", next_ev.name, exc)
+
         if _is_race_weekend(calendar):
             self.update_interval = timedelta(minutes=UPDATE_INTERVAL_RACE_MINUTES)
         else:
             self.update_interval = timedelta(hours=UPDATE_INTERVAL_NORMAL_HOURS)
 
-        return EuroMotoData(calendar=calendar, standings=standings, grid=grid, season=year)
+        return EuroMotoData(
+            calendar=calendar,
+            standings=standings,
+            grid=grid,
+            track_weather=track_weather,
+            season=year,
+        )
 
     async def async_shutdown(self) -> None:
         if self._session and not self._session.closed:

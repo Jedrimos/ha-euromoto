@@ -35,6 +35,11 @@ views:
             &nbsp;·&nbsp;
             [📺 Livestream]({{ state_attr('sensor.euromoto_race_weekend', 'livestream_url') }})
 
+      # ---------- Streckenwetter ----------
+      - type: weather-forecast
+        entity: weather.euromoto_track_weather
+        show_forecast: false
+
       # ---------- Nächstes Event ----------
       - type: markdown
         title: >
@@ -189,6 +194,40 @@ views:
           {% else %}
           *Keine Startaufstellung verfügbar.*
           {% endif %}
+
+  # ============================================================
+  # LIEBLINGSFAHRER
+  # ============================================================
+  - title: Mein Fahrer
+    icon: mdi:account-heart
+    path: euromoto-favorite
+    cards:
+
+      - type: markdown
+        title: 🏍️ Mein Fahrer
+        content: >
+          {% set s = 'sensor.euromoto_favorite_rider_' ~ (state_attr('sensor.euromoto_favorite_rider_94', 'number') | default('94')) %}
+          {% if states(s) not in ['unavailable', 'unknown', 'none'] %}
+          ## {{ state_attr(s, 'flag') }} {{ states(s) }}
+
+          | | |
+          |---|---|
+          | 🏆 Meisterschaft Pos. | **#{{ state_attr(s, 'position') }}** |
+          | 🔢 Startnummer | #{{ state_attr(s, 'number') }} |
+          | 🏍️ Motorrad | {{ state_attr(s, 'bike') }} |
+          | 🌍 Nation | {{ state_attr(s, 'flag') }} {{ state_attr(s, 'nation') }} |
+          | 🏅 Punkte | **{{ state_attr(s, 'points') }}** |
+          | 📂 Klasse | {{ state_attr(s, 'class') }} |
+          {% else %}
+          *Lieblingsfahrer nicht gefunden. Bitte Startnummer in den Optionen eintragen.*
+          {% endif %}
+
+      # Direkte Entities-Karte (ersetze 94 mit deiner Startnummer)
+      - type: entities
+        title: Statistiken
+        entities:
+          - entity: sensor.euromoto_favorite_rider_94
+            name: Aktueller Stand
 
   # ============================================================
   # TOP 10 (Einzelsensoren)
