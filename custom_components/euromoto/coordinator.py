@@ -56,11 +56,26 @@ def _track_slug(event: TrackEvent) -> str | None:
     return event.track_url.rstrip("/").rsplit("/", 1)[-1]
 
 
+def _best_fallback_key(slug: str, lookup: dict) -> str | None:
+    """Find the best matching key in a dict for a URL slug via partial match."""
+    if slug in lookup:
+        return slug
+    # Try: key is a substring of slug (e.g. "oschersleben" in "motorsport-arena-oschersleben")
+    for key in lookup:
+        if key in slug:
+            return key
+    # Try: slug is a substring of key
+    for key in lookup:
+        if slug in key:
+            return key
+    return None
+
+
 def _merge_fallback(details: dict[str, Any], slug: str) -> dict[str, Any]:
     """Fill missing keys from hardcoded fallback data."""
-    fallback = TRACK_DATA_FALLBACK.get(slug, {})
-    merged = {**fallback, **details}  # scraped data wins over fallback
-    return merged
+    key = _best_fallback_key(slug, TRACK_DATA_FALLBACK)
+    fallback = TRACK_DATA_FALLBACK.get(key, {}) if key else {}
+    return {**fallback, **details}  # scraped data wins over fallback
 
 
 class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
@@ -138,7 +153,8 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         next_ev = _next_event(calendar)
         if next_ev:
             slug = _track_slug(next_ev)
-            coords = TRACK_COORDINATES.get(slug or "")
+            coord_key = _best_fallback_key(slug or "", TRACK_COORDINATES) if slug else None
+            coords = TRACK_COORDINATES.get(coord_key) if coord_key else None
             if coords:
                 try:
                     track_weather = await fetch_track_weather(
