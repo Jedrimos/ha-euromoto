@@ -39,8 +39,22 @@ COUNTRY_HINTS: dict[str, str] = {
     "(NL)": "NL",
     "Assen": "NL",
     "Brünn": "CZ",
+    "Bruenn": "CZ",
+    "Brno": "CZ",
     "Most": "CZ",
 }
+
+# Hardcoded 2026 IDM season calendar – used when website is unreachable.
+# Source: https://idm.de/2025/09/27/idm-der-terminkalender-fuer-2026-steht-fest/
+CALENDAR_FALLBACK_2026: list[dict[str, str]] = [
+    {"name": "Sachsenring",       "start": "2026-05-08", "end": "2026-05-10", "country": "DE", "slug": "sachsenring"},
+    {"name": "Brünn",             "start": "2026-05-29", "end": "2026-05-31", "country": "CZ", "slug": "bruenn"},
+    {"name": "Autodrom Most",     "start": "2026-06-26", "end": "2026-06-28", "country": "CZ", "slug": "most"},
+    {"name": "Oschersleben",      "start": "2026-07-31", "end": "2026-08-02", "country": "DE", "slug": "oschersleben"},
+    {"name": "TT Circuit Assen",  "start": "2026-08-14", "end": "2026-08-16", "country": "NL", "slug": "assen"},
+    {"name": "Nürburgring",       "start": "2026-09-04", "end": "2026-09-06", "country": "DE", "slug": "nuerburgring"},
+    {"name": "Hockenheim",        "start": "2026-09-25", "end": "2026-09-27", "country": "DE", "slug": "hockenheim"},
+]
 
 TICKETS_URL = "https://tickets.euromoto.racing/"
 LIVESTREAM_URL = f"{BASE_URL}/live/"

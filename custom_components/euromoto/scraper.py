@@ -10,7 +10,14 @@ from typing import Any
 import aiohttp
 from bs4 import BeautifulSoup
 
-from .const import BASE_URL, CALENDAR_URL, COUNTRY_HINTS, SCRAPER_HEADERS, TRACK_URL_TEMPLATE
+from .const import (
+    BASE_URL,
+    CALENDAR_FALLBACK_2026,
+    CALENDAR_URL,
+    COUNTRY_HINTS,
+    SCRAPER_HEADERS,
+    TRACK_URL_TEMPLATE,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -163,13 +170,16 @@ class EuroMotoScraper:
 
     async def fetch_calendar(self) -> list[TrackEvent]:
         html = await self._get(CALENDAR_URL)
-        if not html:
-            return []
-        try:
-            return _parse_calendar(html)
-        except Exception as exc:
-            _LOGGER.error("Error parsing calendar: %s", exc)
-            return []
+        events: list[TrackEvent] = []
+        if html:
+            try:
+                events = _parse_calendar(html)
+            except Exception as exc:
+                _LOGGER.error("Error parsing calendar: %s", exc)
+        if not events:
+            _LOGGER.info("Calendar scrape returned no events – using hardcoded 2026 fallback")
+            events = _calendar_fallback()
+        return events
 
     async def fetch_track_details(self, slug: str) -> dict[str, Any]:
         url = TRACK_URL_TEMPLATE.format(slug=slug)
@@ -183,10 +193,39 @@ class EuroMotoScraper:
             return {}
 
 
+def _make_event(date_raw: str, name_raw: str, track_url: str | None) -> TrackEvent | None:
+    """Build a TrackEvent from raw date and name strings, or None if date unparseable."""
+    parsed = _parse_date_range(date_raw)
+    if not parsed:
+        return None
+    date_start, date_end = parsed
+    clean_name = name_raw
+    for hint in ("(CZ)", "(NL)", "(DE)"):
+        clean_name = clean_name.replace(hint, "").strip()
+    country = _guess_country(clean_name)
+    return TrackEvent(
+        name=clean_name,
+        date_start=date_start,
+        date_end=date_end,
+        track_url=track_url,
+        country=country,
+    )
+
+
+def _extract_link(element, base: str = BASE_URL) -> str | None:
+    link = element.find("a", href=True) if hasattr(element, "find") else None
+    if not link:
+        return None
+    href = link["href"]
+    return href if href.startswith("http") else base + href
+
+
 def _parse_calendar(html: str) -> list[TrackEvent]:
+    """Parse calendar HTML – tries multiple common WordPress layout patterns."""
     soup = BeautifulSoup(html, "html.parser")
     events: list[TrackEvent] = []
 
+    # ── Strategy 1: <table> with rows ────────────────────────────────────────
     for table in soup.find_all("table"):
         for row in table.find_all("tr"):
             cells = row.find_all("td")
@@ -194,35 +233,64 @@ def _parse_calendar(html: str) -> list[TrackEvent]:
                 continue
             date_raw = cells[0].get_text(strip=True)
             name_raw = cells[1].get_text(strip=True)
-            if not date_raw or not name_raw:
+            link_cell = cells[2] if len(cells) >= 3 else cells[1]
+            ev = _make_event(date_raw, name_raw, _extract_link(link_cell))
+            if ev:
+                events.append(ev)
+
+    # ── Strategy 2: <li> or <article> elements containing a date pattern ────
+    if not events:
+        for el in soup.find_all(["li", "article", "div"], class_=True):
+            text = el.get_text(" ", strip=True)
+            m = _DATE_RANGE_RE.search(text)
+            if not m:
                 continue
-
-            parsed = _parse_date_range(date_raw)
-            if not parsed:
+            date_raw = m.group(0)
+            # Name = text after the date match, trimmed
+            name_raw = text[m.end():].strip().split("\n")[0].strip()
+            if not name_raw:
+                name_raw = text[:m.start()].strip().split("\n")[-1].strip()
+            if not name_raw:
                 continue
-            date_start, date_end = parsed
+            ev = _make_event(date_raw, name_raw, _extract_link(el))
+            if ev:
+                events.append(ev)
 
-            track_url: str | None = None
-            if len(cells) >= 3:
-                link = cells[2].find("a", href=True)
-                if link:
-                    href = link["href"]
-                    track_url = href if href.startswith("http") else BASE_URL + href
+    # ── Strategy 3: scan ALL text for date+name pairs ────────────────────────
+    if not events:
+        for m in _DATE_RANGE_RE.finditer(soup.get_text(" ", strip=True)):
+            date_raw = m.group(0)
+            after = soup.get_text(" ", strip=True)[m.end():m.end() + 80].strip()
+            name_raw = after.split("\n")[0].split("|")[0].strip()
+            if len(name_raw) > 3:
+                ev = _make_event(date_raw, name_raw, None)
+                if ev:
+                    events.append(ev)
 
-            country = _guess_country(name_raw)
-            clean_name = name_raw
-            for hint in ("(CZ)", "(NL)", "(DE)"):
-                clean_name = clean_name.replace(hint, "").strip()
+    # Deduplicate by (date_start, name) and sort
+    seen: set[tuple] = set()
+    unique: list[TrackEvent] = []
+    for ev in events:
+        key = (ev.date_start, ev.name)
+        if key not in seen:
+            seen.add(key)
+            unique.append(ev)
+    unique.sort(key=lambda e: e.date_start)
+    return unique
 
-            events.append(
-                TrackEvent(
-                    name=clean_name,
-                    date_start=date_start,
-                    date_end=date_end,
-                    track_url=track_url,
-                    country=country,
-                )
-            )
 
-    events.sort(key=lambda e: e.date_start)
+def _calendar_fallback() -> list[TrackEvent]:
+    """Return hardcoded 2026 calendar as TrackEvent list."""
+    events: list[TrackEvent] = []
+    for entry in CALENDAR_FALLBACK_2026:
+        start = datetime.strptime(entry["start"], "%Y-%m-%d")
+        end = datetime.strptime(entry["end"], "%Y-%m-%d")
+        slug = entry["slug"]
+        events.append(TrackEvent(
+            name=entry["name"],
+            date_start=start,
+            date_end=end,
+            track_url=f"{BASE_URL}/strecke/{slug}/",
+            country=entry["country"],
+        ))
     return events

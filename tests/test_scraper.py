@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from custom_components.euromoto.scraper import (
+    _calendar_fallback,
     _parse_calendar,
     _parse_date_range,
     _parse_track_details,
@@ -148,3 +149,54 @@ class TestCountryGuess:
 
     def test_nl_assen(self):
         assert _guess_country("Assen") == "NL"
+
+
+# HTML that uses <div> layout (no <table>) – simulates WordPress Gutenberg blocks
+DIV_CALENDAR_HTML = """
+<html><body>
+<div class="wp-block-group">
+  <div class="event-row">
+    <span class="event-date">08.05.-10.05.2026</span>
+    <span class="event-name"><a href="/strecke/sachsenring/">Sachsenring</a></span>
+  </div>
+  <div class="event-row">
+    <span class="event-date">29.05.-31.05.2026</span>
+    <span class="event-name">Brünn (CZ)</span>
+  </div>
+</div>
+</body></html>
+"""
+
+
+class TestCalendarFallback:
+    def test_fallback_has_seven_events(self):
+        events = _calendar_fallback()
+        assert len(events) == 7
+
+    def test_fallback_starts_with_sachsenring(self):
+        events = _calendar_fallback()
+        assert events[0].name == "Sachsenring"
+        assert events[0].date_start.month == 5
+        assert events[0].date_start.day == 8
+
+    def test_fallback_ends_with_hockenheim(self):
+        events = _calendar_fallback()
+        assert "Hockenheim" in events[-1].name
+
+    def test_fallback_countries(self):
+        events = _calendar_fallback()
+        countries = {e.name: e.country for e in events}
+        assert countries["Brünn"] == "CZ"
+        assert countries["TT Circuit Assen"] == "NL"
+        assert countries["Sachsenring"] == "DE"
+
+    def test_fallback_has_track_urls(self):
+        events = _calendar_fallback()
+        assert all(e.track_url and e.track_url.startswith("https://") for e in events)
+
+    def test_div_layout_parsed(self):
+        """Strategy 2: <div> based layout (no <table>)."""
+        events = _parse_calendar(DIV_CALENDAR_HTML)
+        assert len(events) >= 2
+        names = [e.name for e in events]
+        assert any("Sachsenring" in n for n in names)
