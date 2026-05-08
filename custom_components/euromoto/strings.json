@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EURO MOTO / IDM einrichten",
+        "description": "Wähle aus, welche Klassen-Standings als Sensoren angelegt werden sollen.",
+        "data": {
+          "Superbike": "Superbike Standings",
+          "Supersport": "Supersport Standings",
+          "Sportbike": "Sportbike Standings"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Nur eine Instanz von EURO MOTO / IDM ist erlaubt."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EURO MOTO / IDM Optionen",
+        "data": {
+          "Superbike": "Superbike Standings",
+          "Supersport": "Supersport Standings",
+          "Sportbike": "Sportbike Standings"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_event": {
+        "name": "Next Event"
+      },
+      "season_calendar": {
+        "name": "Season Calendar"
+      },
+      "race_weekend": {
+        "name": "Race Weekend"
+      }
+    }
+  }
+}
