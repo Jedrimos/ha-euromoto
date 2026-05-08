@@ -2,29 +2,29 @@
   "config": {
     "step": {
       "user": {
-        "title": "EURO MOTO / IDM einrichten",
-        "description": "Wähle die Klassen und optionale Lieblingsfahrer.",
+        "title": "Set up EURO MOTO / IDM",
+        "description": "Select the classes and optionally enter favorite rider numbers.",
         "data": {
           "Superbike": "Superbike Standings",
           "Supersport": "Supersport Standings",
           "Sportbike": "Sportbike Standings",
-          "favorite_rider_numbers": "Lieblingsfahrer Startnummern (kommagetrennt, z.B. 94, 52)"
+          "favorite_rider_numbers": "Favorite rider numbers (comma-separated, e.g. 94, 52)"
         }
       }
     },
     "abort": {
-      "single_instance_allowed": "Nur eine Instanz von EURO MOTO / IDM ist erlaubt."
+      "single_instance_allowed": "Only one instance of EURO MOTO / IDM is allowed."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "EURO MOTO / IDM Optionen",
+        "title": "EURO MOTO / IDM Options",
         "data": {
           "Superbike": "Superbike Standings",
           "Supersport": "Supersport Standings",
           "Sportbike": "Sportbike Standings",
-          "favorite_rider_numbers": "Lieblingsfahrer Startnummern (kommagetrennt, z.B. 94, 52)"
+          "favorite_rider_numbers": "Favorite rider numbers (comma-separated, e.g. 94, 52)"
         }
       }
     }
@@ -32,13 +32,13 @@
   "entity": {
     "sensor": {
       "next_event": {
-        "name": "Nächstes Event"
+        "name": "Next Event"
       },
       "season_calendar": {
-        "name": "Saisonkalender"
+        "name": "Season Calendar"
       },
       "race_weekend": {
-        "name": "Rennwochenende"
+        "name": "Race Weekend"
       }
     }
   }

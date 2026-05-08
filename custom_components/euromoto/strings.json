@@ -3,11 +3,12 @@
     "step": {
       "user": {
         "title": "EURO MOTO / IDM einrichten",
-        "description": "Wähle aus, welche Klassen-Standings als Sensoren angelegt werden sollen.",
+        "description": "Wähle die Klassen und optionale Lieblingsfahrer.",
         "data": {
           "Superbike": "Superbike Standings",
           "Supersport": "Supersport Standings",
-          "Sportbike": "Sportbike Standings"
+          "Sportbike": "Sportbike Standings",
+          "favorite_rider_numbers": "Lieblingsfahrer Startnummern (kommagetrennt, z.B. 94, 52)"
         }
       }
     },
@@ -22,7 +23,8 @@
         "data": {
           "Superbike": "Superbike Standings",
           "Supersport": "Supersport Standings",
-          "Sportbike": "Sportbike Standings"
+          "Sportbike": "Sportbike Standings",
+          "favorite_rider_numbers": "Lieblingsfahrer Startnummern (kommagetrennt, z.B. 94, 52)"
         }
       }
     }
