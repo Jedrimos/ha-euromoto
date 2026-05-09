@@ -24,10 +24,20 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-_BASE = "https://livetiming.bike-promotion.com"
-_BASE_HTTP = "http://livetiming.bike-promotion.com"
+_HOST = "livetiming.raceresults.de"
 _PROTO = "1.5"
-_GROUP = "w"
+_GROUP = "w"   # live timing group
+_GROUP_TICKER = "t"  # ticker / incident feed
+
+# Candidate (base, hub_path) pairs tried in order during negotiate.
+_NEGOTIATE_CANDIDATES = [
+    (f"https://{_HOST}", "/lt"),
+    (f"https://{_HOST}", "/signalr"),
+    (f"https://{_HOST}", ""),
+    (f"http://{_HOST}", "/lt"),
+    (f"http://{_HOST}", "/signalr"),
+    (f"http://{_HOST}", ""),
+]
 
 _FLAG_MAP = {
     -1: "green", 0: "green",
@@ -62,9 +72,19 @@ class LiveRow:
 
 
 @dataclass
+class LiveIncident:
+    timestamp: str = ""
+    rider: str = ""
+    number: str = ""
+    text: str = ""
+    kind: str = ""  # "crash", "penalty", "info", "sc", "flag"
+
+
+@dataclass
 class LiveTimingState:
     session: LiveSession = field(default_factory=LiveSession)
     rows: list[LiveRow] = field(default_factory=list)
+    incidents: list[LiveIncident] = field(default_factory=list)
     connected: bool = False
     columns: list[str] = field(default_factory=list)
 
@@ -146,24 +166,30 @@ class EuroMotoLiveTiming:
             "_gr": _GROUP,
             "_": ts,
         }
-        # Try HTTPS first, fall back to HTTP
-        base = _BASE
+        # Probe candidate (base, hub_path) pairs until negotiate succeeds
+        base = ""
+        hub_path = ""
         data: dict = {}
-        for candidate_base in (_BASE, _BASE_HTTP):
+        last_exc: Exception = RuntimeError("No negotiate candidate succeeded")
+        for candidate_base, candidate_hub in _NEGOTIATE_CANDIDATES:
+            url = f"{candidate_base}{candidate_hub}/negotiate"
             try:
                 async with self._session.get(
-                    f"{candidate_base}/lt/negotiate",
+                    url,
                     params=params,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     resp.raise_for_status()
                     data = await resp.json(content_type=None)
                 base = candidate_base
+                hub_path = candidate_hub
+                _LOGGER.debug("Negotiate succeeded at %s", url)
                 break
             except Exception as exc:
-                _LOGGER.debug("Negotiate failed at %s: %s", candidate_base, exc)
-                if candidate_base == _BASE_HTTP:
-                    raise
+                _LOGGER.debug("Negotiate failed at %s: %s", url, exc)
+                last_exc = exc
+        else:
+            raise last_exc
 
         token: str = data.get("ConnectionToken", "")
         if not token:
@@ -172,7 +198,7 @@ class EuroMotoLiveTiming:
         scheme = "wss" if base.startswith("https") else "ws"
         host = base.split("://", 1)[1]
         ws_url = (
-            f"{scheme}://{host}/lt/connect"
+            f"{scheme}://{host}{hub_path}/connect"
             f"?transport=webSockets"
             f"&clientProtocol={_PROTO}"
             f"&_tk={quote(self._tenant_id, safe='')}"
@@ -188,7 +214,7 @@ class EuroMotoLiveTiming:
         ) as ws:
             # Step 3: start handshake (fire-and-forget)
             asyncio.create_task(self._session.get(
-                f"{base}/lt/start",
+                f"{base}{hub_path}/start",
                 params={**params, "transport": "webSockets", "connectionToken": token},
             ))
             self._state.connected = True
@@ -226,6 +252,8 @@ class EuroMotoLiveTiming:
             self._handle_changes(arg)
         elif method in ("h_h", "h_i"):
             self._handle_heat(arg)
+        elif method in ("t_m", "t_i", "ticker"):
+            self._handle_ticker(arg)
 
     def _handle_compressed(self, payload: str) -> None:
         try:
@@ -307,6 +335,49 @@ class EuroMotoLiveTiming:
         rows.sort(key=lambda r: r.position)
         self._state.rows = rows
         self._notify()
+
+    def _handle_ticker(self, arg: Any) -> None:
+        """Handle ticker/incident messages from the t channel."""
+        import datetime as _dt
+
+        if isinstance(arg, dict):
+            items = arg.get("m", arg.get("items", [arg]))
+        elif isinstance(arg, list):
+            items = arg
+        else:
+            items = [{"text": str(arg)}]
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("t", item.get("text", item.get("m", "")))).strip()
+            if not text:
+                continue
+            number = str(item.get("n", item.get("number", item.get("nr", ""))))
+            rider = str(item.get("d", item.get("driver", item.get("name", ""))))
+            ts = str(item.get("ts", item.get("time", _dt.datetime.now().strftime("%H:%M:%S"))))
+
+            # Classify incident type from keywords in text
+            tl = text.lower()
+            if any(w in tl for w in ("crash", "sturz", "fall", "retired", "dnf", "ausfall")):
+                kind = "crash"
+            elif any(w in tl for w in ("safety car", "sc", "safetyCar")):
+                kind = "sc"
+            elif any(w in tl for w in ("penalty", "strafe", "drive through", "long lap")):
+                kind = "penalty"
+            elif any(w in tl for w in ("red flag", "rote flagge", "abbruch")):
+                kind = "flag"
+            else:
+                kind = "info"
+
+            incident = LiveIncident(
+                timestamp=ts, rider=rider, number=number, text=text, kind=kind
+            )
+            # Keep only the last 20 incidents
+            self._state.incidents = ([incident] + self._state.incidents)[:20]
+
+        if items:
+            self._notify()
 
     def _handle_heat(self, arg: dict) -> None:
         f = arg.get("f", -1)

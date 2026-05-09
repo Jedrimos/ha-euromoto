@@ -35,7 +35,16 @@ RIDERS_CLASS_URLS: dict[str, str] = {
     "Sportbike":  f"{BASE_URL}/klasse/sportbike/",
 }
 
+RESULTS_BASE_URL = "https://results.bike-promotion.com"
 PDF_BASE_URL = "https://results.bike-promotion.com/Results/Championship%20scores"
+
+# MyLaps event IDs for each IDM round (from results.bike-promotion.com/?mylaps=type,event,eventid,X)
+# Used to fetch live session schedule from the results server.
+# Update these IDs each season by checking the results page.
+MYLAPS_EVENT_IDS: dict[str, int] = {
+    "sachsenring":  3496488,
+    # Other 2026 IDs TBD – will be discovered automatically via the results index
+}
 PDF_URL_TEMPLATE = (
     "{base}/{year}/01%20IDM/IDM%20Punktest%C3%A4nde%20IDM_{cls}.pdf"
 )
@@ -77,7 +86,7 @@ CALENDAR_FALLBACK_2026: list[dict[str, str]] = [
 
 TICKETS_URL = "https://tickets.euromoto.racing/"
 LIVESTREAM_URL = f"{BASE_URL}/live/"
-LIVETIMING_URL = "http://livetiming.bike-promotion.com/#/channel/c1"
+LIVETIMING_URL = "https://livetiming.raceresults.de/#/channel/c1"
 
 UPDATE_INTERVAL_NORMAL_HOURS = 6
 UPDATE_INTERVAL_RACE_MINUTES = 30
@@ -123,18 +132,20 @@ SCHEDULE_FALLBACK: list[dict] = [
     {"day": "saturday", "time_start": "16:25", "time_end": "16:55", "session": "Race 1",      "cls": "ZX-4RR Cup",  "race": True},
     {"day": "saturday", "time_start": "17:05", "time_end": "17:35", "session": "Race 1",      "cls": "ZX-6R Cup",   "race": True},
     {"day": "saturday", "time_start": "17:45", "time_end": "18:15", "session": "Race 1",      "cls": "ADAC Cup",    "race": True},
-    # ── SUNDAY (estimated – Superbike R1+R2 and Race 2 for remaining classes) ──
-    {"day": "sunday",   "time_start": "09:00", "time_end": "09:15", "session": "Warm-up", "cls": "Superbike",   "race": False},
-    {"day": "sunday",   "time_start": "09:20", "time_end": "09:35", "session": "Warm-up", "cls": "Supersport",  "race": False},
-    {"day": "sunday",   "time_start": "09:40", "time_end": "09:55", "session": "Warm-up", "cls": "Sportbike",   "race": False},
-    {"day": "sunday",   "time_start": "11:00", "time_end": "11:35", "session": "Race 1",  "cls": "Superbike",   "race": True},
-    {"day": "sunday",   "time_start": "12:00", "time_end": "12:30", "session": "Race 2",  "cls": "Supersport",  "race": True},
-    {"day": "sunday",   "time_start": "12:45", "time_end": "13:15", "session": "Race 2",  "cls": "Sportbike",   "race": True},
-    {"day": "sunday",   "time_start": "13:30", "time_end": "14:00", "session": "Race 2",  "cls": "ZX-4RR Cup",  "race": True},
-    {"day": "sunday",   "time_start": "14:15", "time_end": "14:45", "session": "Race 2",  "cls": "ZX-6R Cup",   "race": True},
-    {"day": "sunday",   "time_start": "15:00", "time_end": "15:30", "session": "Race 2",  "cls": "Moto4 Cup",   "race": True},
-    {"day": "sunday",   "time_start": "15:45", "time_end": "16:15", "session": "Race 2",  "cls": "ADAC Cup",    "race": True},
-    {"day": "sunday",   "time_start": "16:30", "time_end": "17:05", "session": "Race 2",  "cls": "Superbike",   "race": True},
+    # ── SUNDAY (confirmed from euromoto.racing, Sachsenring 10.05.2026) ─────────
+    {"day": "sunday",   "time_start": "08:30", "time_end": "08:50", "session": "Q2",      "cls": "ADAC Cup",    "race": False},
+    {"day": "sunday",   "time_start": "09:00", "time_end": "09:30", "session": "Q2",      "cls": "Moto4 Cup",   "race": False},
+    {"day": "sunday",   "time_start": "09:40", "time_end": "09:50", "session": "Warm-up", "cls": "Superbike",   "race": False},
+    {"day": "sunday",   "time_start": "09:55", "time_end": "10:05", "session": "Warm-up", "cls": "Supersport",  "race": False},
+    {"day": "sunday",   "time_start": "10:10", "time_end": "10:20", "session": "Warm-up", "cls": "Sportbike",   "race": False},
+    {"day": "sunday",   "time_start": "10:50", "time_end": "11:20", "session": "Race 2",  "cls": "ADAC Cup",    "race": True},
+    {"day": "sunday",   "time_start": "11:40", "time_end": "12:15", "session": "Race 1",  "cls": "Superbike",   "race": True},
+    {"day": "sunday",   "time_start": "12:20", "time_end": "12:50", "session": "Race 2",  "cls": "ZX-4RR Cup",  "race": True},
+    {"day": "sunday",   "time_start": "13:05", "time_end": "13:30", "session": "Race 2",  "cls": "Moto4 Cup",   "race": True},
+    {"day": "sunday",   "time_start": "14:30", "time_end": "15:05", "session": "Race 2",  "cls": "Supersport",  "race": True},
+    {"day": "sunday",   "time_start": "15:20", "time_end": "15:55", "session": "Race 2",  "cls": "Sportbike",   "race": True},
+    {"day": "sunday",   "time_start": "16:10", "time_end": "16:45", "session": "Race 2",  "cls": "Superbike",   "race": True},
+    {"day": "sunday",   "time_start": "16:50", "time_end": "17:20", "session": "Race 2",  "cls": "ZX-6R Cup",   "race": True},
 ]
 
 # Known track GPS coordinates (lat, lon) for weather lookup

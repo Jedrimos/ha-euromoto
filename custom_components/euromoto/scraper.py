@@ -15,6 +15,8 @@ from .const import (
     CALENDAR_FALLBACK_2026,
     CALENDAR_URL,
     COUNTRY_HINTS,
+    MYLAPS_EVENT_IDS,
+    RESULTS_BASE_URL,
     RIDERS_CLASS_URLS,
     RIDERS_URL_CANDIDATES,
     SCRAPER_HEADERS,
@@ -274,6 +276,68 @@ def _parse_rider_entries(html: str) -> list[dict[str, Any]]:
     return entries
 
 
+def _parse_mylaps_sessions(html: str) -> list[dict[str, Any]]:
+    """Parse session rows from a MyLaps results page.
+
+    MyLaps pages typically show sessions as table rows or list items containing
+    a session name and optionally a date/time.  Returns [] if nothing found.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    sessions: list[dict[str, Any]] = []
+    seen: set[tuple] = set()
+
+    for el in soup.find_all(["tr", "li", "div", "a"]):
+        text = el.get_text(" ", strip=True)
+        if len(text) < 3 or len(text) > 200:
+            continue
+
+        # Detect session type
+        tl = text.lower()
+        session = ""
+        for kw, label in _SESSION_KEYWORDS.items():
+            if kw in tl:
+                session = label
+                break
+        if not session:
+            continue
+
+        # Detect class
+        cls = "Support"
+        for kw, label in _CLASS_KEYWORDS.items():
+            if kw in tl:
+                cls = label
+                break
+
+        # Extract times if present
+        times = _TIME_RE.findall(text)
+        time_start = f"{int(times[0][0]):02d}:{times[0][1]}" if times else ""
+        time_end = f"{int(times[1][0]):02d}:{times[1][1]}" if len(times) >= 2 else ""
+
+        # Detect day
+        day = "saturday"
+        for kw, d in _DAY_KEYWORDS.items():
+            if kw in tl:
+                day = d
+                break
+
+        key = (day, time_start, session, cls)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        is_race = session.startswith("Race")
+        sessions.append({
+            "day": day,
+            "time_start": time_start,
+            "time_end": time_end,
+            "session": session,
+            "cls": cls,
+            "race": is_race,
+        })
+
+    return sessions if len(sessions) >= 3 else []
+
+
 _SCHEDULE_PDF_KEYWORDS = ("zeitplan", "timetable", "programm", "schedule", "fahrplan")
 
 
@@ -382,6 +446,60 @@ class EuroMotoScraper:
                         return sessions
             except Exception as exc:
                 _LOGGER.debug("Schedule parse failed for %s at %s: %s", event.name, url, exc)
+        return []
+
+    async def fetch_schedule_mylaps(self, slug: str) -> list[dict[str, Any]]:
+        """Fetch session schedule from results.bike-promotion.com MyLaps system.
+
+        Tries the known event ID first, then probes the results index to discover
+        the event ID automatically.  Returns [] if nothing useful is found.
+        """
+        event_id = MYLAPS_EVENT_IDS.get(slug)
+        if not event_id:
+            event_id = await self._discover_mylaps_event_id(slug)
+        if not event_id:
+            return []
+        return await self._fetch_mylaps_sessions(event_id)
+
+    async def _discover_mylaps_event_id(self, slug: str) -> int | None:
+        """Try to find the MyLaps event ID for a track slug from the results index."""
+        index_url = f"{RESULTS_BASE_URL}/"
+        html = await self._get(index_url)
+        if not html:
+            return None
+        soup = BeautifulSoup(html, "html.parser")
+        slug_lower = slug.lower().replace("-", "").replace("_", "")
+        for a in soup.find_all("a", href=True):
+            href: str = a["href"]
+            text = a.get_text(strip=True).lower().replace(" ", "").replace("-", "")
+            if slug_lower in text or slug_lower in href.lower():
+                import re as _re
+                m = _re.search(r"eventid[,=](\d+)", href)
+                if m:
+                    eid = int(m.group(1))
+                    MYLAPS_EVENT_IDS[slug] = eid  # cache for this session
+                    _LOGGER.debug("Discovered MyLaps event ID %d for %s", eid, slug)
+                    return eid
+        return None
+
+    async def _fetch_mylaps_sessions(self, event_id: int) -> list[dict[str, Any]]:
+        """Fetch sessions list for a MyLaps event ID and parse into schedule format."""
+        # Try sessions endpoint first, fall back to event page
+        for param in (
+            f"type,sessions,eventid,{event_id}",
+            f"type,event,eventid,{event_id}",
+        ):
+            url = f"{RESULTS_BASE_URL}/?mylaps={param}"
+            html = await self._get(url)
+            if not html:
+                continue
+            try:
+                sessions = _parse_mylaps_sessions(html)
+                if sessions:
+                    _LOGGER.debug("MyLaps: %d sessions for event %d", len(sessions), event_id)
+                    return sessions
+            except Exception as exc:
+                _LOGGER.debug("MyLaps parse failed for %s: %s", url, exc)
         return []
 
     async def _fetch_schedule_pdf(self, url: str) -> list[dict[str, Any]]:
