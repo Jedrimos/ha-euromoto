@@ -392,11 +392,21 @@ class FavoriteRiderSensor(_EuroMotoSensor):
         self.entity_id = f"sensor.euromoto_rider_{rider_number}"
 
     def _find(self) -> tuple[str, dict[str, Any]] | None:
+        # 1. Standings PDF (has pos + points)
         for cls in self._enabled_classes:
             for entry in self.coordinator.data.standings.get(cls, []):
                 if entry.get("number") == self._rider_number:
                     return cls, entry
-        # Fallback: check scraped rider entries (no points data, but has team/bike)
+        # 2. Starting grid PDF (has grid_pos, bike, nation – no championship points yet)
+        for cls in self._enabled_classes:
+            for entry in self.coordinator.data.grid.get(cls, []):
+                if entry.get("number") == self._rider_number:
+                    # Synthesise a standings-compatible dict with grid position
+                    merged: dict[str, Any] = dict(entry)
+                    merged.setdefault("pos", entry.get("grid_pos"))
+                    merged["position_source"] = "grid"
+                    return cls, merged
+        # 3. Scraped rider entries (name/team/bike, no position)
         for entry in self.coordinator.data.rider_entries:
             if entry.get("number") == self._rider_number:
                 return entry.get("class", ""), entry
@@ -414,9 +424,10 @@ class FavoriteRiderSensor(_EuroMotoSensor):
             return {"number": self._rider_number}
         cls, e = found
         nation = e.get("nation")
-        return {
+        pos = e.get("pos") or e.get("grid_pos")
+        attrs: dict[str, Any] = {
             "number": e.get("number"),
-            "position": e.get("pos"),
+            "position": pos,
             "nation": nation,
             "flag": _flag(nation),
             "bike": e.get("bike"),
@@ -424,6 +435,10 @@ class FavoriteRiderSensor(_EuroMotoSensor):
             "points": e.get("points"),
             "class": cls,
         }
+        if e.get("position_source") == "grid":
+            attrs["position_source"] = "Startaufstellung (Qualifikation)"
+            attrs["best_time"] = e.get("best_time")
+        return attrs
 
 
 # ---------------------------------------------------------------------------
