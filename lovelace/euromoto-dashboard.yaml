@@ -27,12 +27,37 @@ views:
     path: euromoto-overview
     cards:
 
+      # Status-Zeile: Race Weekend + Session + Rennen
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: binary_sensor.euromoto_race_weekend
+            name: Rennwochenende
+            icon: mdi:racing-helmet
+            state_color: true
+          - type: entity
+            entity: binary_sensor.euromoto_session_active
+            name: Session läuft
+            icon: mdi:timer-play
+            state_color: true
+          - type: entity
+            entity: binary_sensor.euromoto_race_active
+            name: Rennen läuft
+            icon: mdi:flag-checkered
+            state_color: true
+
+      # Countdown bis zur nächsten Session
+      - type: entity
+        entity: sensor.euromoto_session_countdown
+        name: Nächste Session in
+        icon: mdi:timer-sand
+
       # Rennwochenende-Banner (nur wenn aktiv)
       - type: conditional
         conditions:
           - condition: state
-            entity: sensor.euromoto_race_weekend
-            state: active
+            entity: binary_sensor.euromoto_race_weekend
+            state: "on"
         card:
           type: markdown
           content: >
@@ -107,6 +132,70 @@ views:
           {% endif %}
 
   # ============================================================
+  # LIVE-TIMING
+  # ============================================================
+  - title: Live-Timing
+    icon: mdi:timer-outline
+    path: euromoto-live
+    cards:
+
+      # Session-Status-Banner
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.euromoto_session_active
+            state: "on"
+        card:
+          type: markdown
+          content: >
+            {% set s = state_attr('binary_sensor.euromoto_session_active', 'session') or '' %}
+            {% set cls = state_attr('binary_sensor.euromoto_session_active', 'class') or '' %}
+            {% set t0 = state_attr('binary_sensor.euromoto_session_active', 'time_start') or '' %}
+            {% set t1 = state_attr('binary_sensor.euromoto_session_active', 'time_end') or '' %}
+            ## 🟢 SESSION LIVE: {{ s }} – {{ cls }}
+            🕐 {{ t0 }}{% if t1 %} bis {{ t1 }} Uhr{% endif %}
+
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.euromoto_race_active
+            state: "on"
+        card:
+          type: markdown
+          content: >
+            {% set s = state_attr('binary_sensor.euromoto_race_active', 'session') or '' %}
+            {% set cls = state_attr('binary_sensor.euromoto_race_active', 'class') or '' %}
+            ## 🏁 RENNEN LIVE: {{ s }} – {{ cls }}
+
+      # Live-Timing Iframe
+      - type: markdown
+        content: >
+          ## ⏱️ Live-Timing
+
+          [▶ Live-Timing im Browser öffnen](http://livetiming.bike-promotion.com/#/channel/c1)
+
+          *Das Live-Timing läuft nur während aktiver Sessions.*
+          *Öffne den Link oben – iFrame wird von HA-Sicherheitsrichtlinien blockiert.*
+
+      # Nächste Session
+      - type: entity
+        entity: sensor.euromoto_session_countdown
+        name: Nächste Session in (Minuten)
+        icon: mdi:timer-sand
+
+      - type: markdown
+        content: >
+          ## ⏱️ Nächste Session
+          {% set s = state_attr('sensor.euromoto_weekend_schedule', 'next_session') %}
+          {% if s %}
+          {% set icons = {'FP1':'🔵','FP2':'🔵','FP3':'🔵','Training':'🔵','PreP':'🟡','Qualifying':'🟡','Superpole':'🟡','Warm-up':'🟠','Race 1':'🏁','Race 2':'🏁'} %}
+          ### {{ icons.get(s.session, '📋') }} {{ s.session }} – {{ s.cls }}
+          🕐 **{{ s.time_start }}** Uhr {% if s.time_end %}bis {{ s.time_end }} Uhr{% endif %}
+          {% else %}
+          *Kein weiteres Event dieses Wochenende*
+          {% endif %}
+
+  # ============================================================
   # MEISTERSCHAFT + ALLE FAHRER
   # ============================================================
   - title: Meisterschaft
@@ -114,35 +203,66 @@ views:
     path: euromoto-standings
     cards:
 
-      # Superbike
-      - type: markdown
-        content: >
-          ## 🏆 IDM Superbike
-          {% set st = state_attr('sensor.euromoto_sbk_standings', 'standings') or [] %}
-          {% if st %}
-          | Pos | # | Fahrer | Nation | Bike | Punkte |
-          |:---:|:---:|---|:---:|---|---:|
-          {% for r in st %}
-          | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | **{{ r.points }}** |
-          {% endfor %}
-          {% else %}
-          *Noch keine Standings – werden nach dem 1. Rennwochenende veröffentlicht.*
-          {% endif %}
+      # No-Spoiler Toggle
+      - type: entity
+        entity: switch.euromoto_no_spoiler_modus
+        name: No-Spoiler Modus
+        icon: mdi:eye-off
 
-      # Supersport
-      - type: markdown
-        content: >
-          ## 🏆 IDM Supersport
-          {% set st = state_attr('sensor.euromoto_ssp_standings', 'standings') or [] %}
-          {% if st %}
-          | Pos | # | Fahrer | Nation | Bike | Punkte |
-          |:---:|:---:|---|:---:|---|---:|
-          {% for r in st %}
-          | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | **{{ r.points }}** |
-          {% endfor %}
-          {% else %}
-          *Noch keine Standings verfügbar.*
-          {% endif %}
+      # Superbike (ausgeblendet wenn No-Spoiler AN)
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: switch.euromoto_no_spoiler_modus
+            state: "off"
+        card:
+          type: markdown
+          content: >
+            ## 🏆 IDM Superbike
+            {% set st = state_attr('sensor.euromoto_sbk_standings', 'standings') or [] %}
+            {% if st %}
+            | Pos | # | Fahrer | Nation | Bike | Punkte |
+            |:---:|:---:|---|:---:|---|---:|
+            {% for r in st %}
+            | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | **{{ r.points }}** |
+            {% endfor %}
+            {% else %}
+            *Noch keine Standings – werden nach dem 1. Rennwochenende veröffentlicht.*
+            {% endif %}
+
+      # Supersport (ausgeblendet wenn No-Spoiler AN)
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: switch.euromoto_no_spoiler_modus
+            state: "off"
+        card:
+          type: markdown
+          content: >
+            ## 🏆 IDM Supersport
+            {% set st = state_attr('sensor.euromoto_ssp_standings', 'standings') or [] %}
+            {% if st %}
+            | Pos | # | Fahrer | Nation | Bike | Punkte |
+            |:---:|:---:|---|:---:|---|---:|
+            {% for r in st %}
+            | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | **{{ r.points }}** |
+            {% endfor %}
+            {% else %}
+            *Noch keine Standings verfügbar.*
+            {% endif %}
+
+      # No-Spoiler aktiv Banner
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: switch.euromoto_no_spoiler_modus
+            state: "on"
+        card:
+          type: markdown
+          content: >
+            ## 🙈 No-Spoiler Modus aktiv
+            Ergebnisse werden ausgeblendet.
+            Schalte den No-Spoiler Modus oben aus um die Standings zu sehen.
 
   # ============================================================
   # ALLE FAHRER & BIKES
@@ -202,37 +322,131 @@ views:
     path: euromoto-grid
     cards:
 
+      - type: entity
+        entity: switch.euromoto_no_spoiler_modus
+        name: No-Spoiler Modus
+        icon: mdi:eye-off
+
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: switch.euromoto_no_spoiler_modus
+            state: "off"
+        card:
+          type: markdown
+          content: >
+            ## 🏁 Superbike – Startaufstellung / Qualifying
+            {% set grid = state_attr('sensor.euromoto_sbk_grid', 'grid') or [] %}
+            {% if grid %}
+            **Pole:** {{ grid[0].flag }} **{{ grid[0].name }}** ({{ grid[0].bike }}) – {{ grid[0].best_time }}
+
+            | P | # | Fahrer | Nation | Motorrad | Beste Zeit |
+            |:---:|:---:|---|:---:|---|---|
+            {% for r in grid %}
+            | **{{ r.grid_pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | `{{ r.best_time }}` |
+            {% endfor %}
+            {% else %}
+            *Keine Startaufstellung verfügbar.*
+            Die Startaufstellung wird nach der Superpole/Qualifikation veröffentlicht (PDF auf results.bike-promotion.com).
+            {% endif %}
+
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: switch.euromoto_no_spoiler_modus
+            state: "off"
+        card:
+          type: markdown
+          content: >
+            ## 🏁 Supersport – Startaufstellung / Qualifying
+            {% set grid = state_attr('sensor.euromoto_ssp_grid', 'grid') or [] %}
+            {% if grid %}
+            **Pole:** {{ grid[0].flag }} **{{ grid[0].name }}** ({{ grid[0].bike }}) – {{ grid[0].best_time }}
+
+            | P | # | Fahrer | Nation | Motorrad | Beste Zeit |
+            |:---:|:---:|---|:---:|---|---|
+            {% for r in grid %}
+            | **{{ r.grid_pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | `{{ r.best_time }}` |
+            {% endfor %}
+            {% else %}
+            *Keine Startaufstellung verfügbar.*
+            {% endif %}
+
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: switch.euromoto_no_spoiler_modus
+            state: "on"
+        card:
+          type: markdown
+          content: >
+            ## 🙈 No-Spoiler Modus aktiv
+            Startaufstellung wird ausgeblendet.
+
+  # ============================================================
+  # TAGESPLAN
+  # ============================================================
+  - title: Tagesplan
+    icon: mdi:calendar-clock
+    path: euromoto-schedule
+    cards:
+
+      # Nächste Session
       - type: markdown
         content: >
-          ## 🏁 Superbike – Startaufstellung / Qualifying
-          {% set grid = state_attr('sensor.euromoto_sbk_grid', 'grid') or [] %}
-          {% if grid %}
-          **Pole:** {{ grid[0].flag }} **{{ grid[0].name }}** ({{ grid[0].bike }}) – {{ grid[0].best_time }}
-
-          | P | # | Fahrer | Nation | Motorrad | Beste Zeit |
-          |:---:|:---:|---|:---:|---|---|
-          {% for r in grid %}
-          | **{{ r.grid_pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | `{{ r.best_time }}` |
-          {% endfor %}
+          ## ⏱️ Nächste Session
+          {% set s = state_attr('sensor.euromoto_weekend_schedule', 'next_session') %}
+          {% if s %}
+          {% set icon = {'FP1':'🔵','FP2':'🔵','FP3':'🔵','Training':'🔵','PreP':'🟡','Qualifying':'🟡','Superpole':'🟡','Warm-up':'🟠','Race 1':'🏁','Race 2':'🏁'} %}
+          ### {{ icon.get(s.session, '📋') }} {{ s.session }} – {{ s.cls }}
+          🕐 **{{ s.time_start }}** Uhr {% if s.time_end %}bis {{ s.time_end }} Uhr{% endif %}
           {% else %}
-          *Keine Startaufstellung verfügbar.*
-          Die Startaufstellung wird nach der Superpole/Qualifikation veröffentlicht (PDF auf results.bike-promotion.com).
+          *Kein weiteres Event dieses Wochenende*
           {% endif %}
 
+      # Freitag
       - type: markdown
         content: >
-          ## 🏁 Supersport – Startaufstellung / Qualifying
-          {% set grid = state_attr('sensor.euromoto_ssp_grid', 'grid') or [] %}
-          {% if grid %}
-          **Pole:** {{ grid[0].flag }} **{{ grid[0].name }}** ({{ grid[0].bike }}) – {{ grid[0].best_time }}
-
-          | P | # | Fahrer | Nation | Motorrad | Beste Zeit |
-          |:---:|:---:|---|:---:|---|---|
-          {% for r in grid %}
-          | **{{ r.grid_pos }}** | {{ r.number }} | {{ r.name }} | {{ r.flag }} | {{ r.bike }} | `{{ r.best_time }}` |
+          ## 🔵 Freitag – Training
+          {% set sessions = state_attr('sensor.euromoto_weekend_schedule', 'friday') or [] %}
+          {% if sessions %}
+          | Uhrzeit | Session | Klasse |
+          |:---:|---|---|
+          {% for s in sessions %}
+          | **{{ s.time }}** | {{ s.icon }} {{ s.session }} | {{ s.class }} |
           {% endfor %}
           {% else %}
-          *Keine Startaufstellung verfügbar.*
+          *Kein Freitag-Programm verfügbar*
+          {% endif %}
+
+      # Samstag
+      - type: markdown
+        content: >
+          ## 🟡 Samstag – Training & Qualifying & Rennen
+          {% set sessions = state_attr('sensor.euromoto_weekend_schedule', 'saturday') or [] %}
+          {% if sessions %}
+          | Uhrzeit | Session | Klasse |
+          |:---:|---|---|
+          {% for s in sessions %}
+          | **{{ s.time }}** | {{ s.icon }} {{ s.session }} | {{ s.class }} |
+          {% endfor %}
+          {% else %}
+          *Kein Samstag-Programm verfügbar*
+          {% endif %}
+
+      # Sonntag
+      - type: markdown
+        content: >
+          ## 🏁 Sonntag – Superpole & Rennen
+          {% set sessions = state_attr('sensor.euromoto_weekend_schedule', 'sunday') or [] %}
+          {% if sessions %}
+          | Uhrzeit | Session | Klasse |
+          |:---:|---|---|
+          {% for s in sessions %}
+          | **{{ s.time }}** | {{ s.icon }} {{ s.session }} | {{ s.class }} |
+          {% endfor %}
+          {% else %}
+          *Kein Sonntag-Programm verfügbar*
           {% endif %}
 
   # ============================================================
@@ -293,3 +507,45 @@ views:
             name: "   P9"
           - entity: sensor.euromoto_sbk_p10
             name: "   P10"
+
+  # ============================================================
+  # EINSTELLUNGEN
+  # ============================================================
+  - title: Einstellungen
+    icon: mdi:cog
+    path: euromoto-settings
+    cards:
+
+      - type: entities
+        title: EURO MOTO Einstellungen
+        entities:
+          - entity: switch.euromoto_no_spoiler_modus
+            name: No-Spoiler Modus
+            icon: mdi:eye-off
+          - entity: sensor.euromoto_session_countdown
+            name: Nächste Session (Minuten)
+          - entity: sensor.euromoto_next_event
+            name: Nächstes Event
+          - entity: sensor.euromoto_season_calendar
+            name: Verbleibende Runden
+
+      - type: markdown
+        content: >
+          ## ℹ️ Über diese Integration
+
+          **EURO MOTO / IDM** v0.2.0
+
+          Daten werden automatisch aktualisiert:
+          - **Normal**: alle 6 Stunden
+          - **Rennwochenende**: alle 30 Minuten
+
+          ### Datenquellen
+          - Kalender: euromoto.racing/termine-strecken/
+          - Ergebnisse: results.bike-promotion.com (PDF)
+          - Wetter: Open-Meteo (kostenlos, kein API-Key)
+          - Live-Timing: livetiming.bike-promotion.com
+
+          ### No-Spoiler Modus
+          Wenn aktiviert, werden Meisterschafts-Tabellen und
+          Startaufstellungen in der UI ausgeblendet – ideal um
+          das Rennen erst später anzuschauen.

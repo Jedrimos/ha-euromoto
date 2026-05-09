@@ -39,8 +39,22 @@ COUNTRY_HINTS: dict[str, str] = {
     "(NL)": "NL",
     "Assen": "NL",
     "Brünn": "CZ",
+    "Bruenn": "CZ",
+    "Brno": "CZ",
     "Most": "CZ",
 }
+
+# Hardcoded 2026 IDM season calendar – used when website is unreachable.
+# Source: https://idm.de/2025/09/27/idm-der-terminkalender-fuer-2026-steht-fest/
+CALENDAR_FALLBACK_2026: list[dict[str, str]] = [
+    {"name": "Sachsenring",       "start": "2026-05-08", "end": "2026-05-10", "country": "DE", "slug": "sachsenring"},
+    {"name": "Brünn",             "start": "2026-05-29", "end": "2026-05-31", "country": "CZ", "slug": "bruenn"},
+    {"name": "Autodrom Most",     "start": "2026-06-26", "end": "2026-06-28", "country": "CZ", "slug": "most"},
+    {"name": "Oschersleben",      "start": "2026-07-31", "end": "2026-08-02", "country": "DE", "slug": "oschersleben"},
+    {"name": "TT Circuit Assen",  "start": "2026-08-14", "end": "2026-08-16", "country": "NL", "slug": "assen"},
+    {"name": "Nürburgring",       "start": "2026-09-04", "end": "2026-09-06", "country": "DE", "slug": "nuerburgring"},
+    {"name": "Hockenheim",        "start": "2026-09-25", "end": "2026-09-27", "country": "DE", "slug": "hockenheim"},
+]
 
 TICKETS_URL = "https://tickets.euromoto.racing/"
 LIVESTREAM_URL = f"{BASE_URL}/live/"
@@ -48,6 +62,42 @@ LIVETIMING_URL = "http://livetiming.bike-promotion.com/#/channel/c1"
 
 UPDATE_INTERVAL_NORMAL_HOURS = 6
 UPDATE_INTERVAL_RACE_MINUTES = 30
+
+# ---------------------------------------------------------------------------
+# Typical Euro Moto race weekend schedule (Sachsenring 2026 confirmed times,
+# other sessions estimated from typical IDM format).
+# Source: speedweek.com / sachsenring-circuit.com PDF
+# day: "friday" | "saturday" | "sunday"
+# session: FP1 / FP2 / PreP / Superpole / Warm-up / Race 1 / Race 2
+# cls: "Superbike" | "Supersport" | "Sportbike" | "Support"
+# ---------------------------------------------------------------------------
+SCHEDULE_FALLBACK: list[dict] = [
+    # ── FRIDAY ────────────────────────────────────────────────
+    {"day": "friday",   "time_start": "08:30", "time_end": "09:00", "session": "FP1",      "cls": "Supersport", "race": False},
+    {"day": "friday",   "time_start": "09:05", "time_end": "09:35", "session": "FP1",      "cls": "Superbike",  "race": False},
+    {"day": "friday",   "time_start": "11:15", "time_end": "11:35", "session": "FP1",      "cls": "Sportbike",  "race": False},
+    {"day": "friday",   "time_start": "14:00", "time_end": "14:30", "session": "FP2",      "cls": "Superbike",  "race": False},
+    {"day": "friday",   "time_start": "14:35", "time_end": "15:00", "session": "FP2",      "cls": "Supersport", "race": False},
+    {"day": "friday",   "time_start": "15:05", "time_end": "15:25", "session": "FP2",      "cls": "Sportbike",  "race": False},
+    {"day": "friday",   "time_start": "17:15", "time_end": "17:45", "session": "PreP",     "cls": "Superbike",  "race": False},
+    # ── SATURDAY ──────────────────────────────────────────────
+    {"day": "saturday", "time_start": "08:15", "time_end": "08:45", "session": "FP3",      "cls": "Supersport", "race": False},
+    {"day": "saturday", "time_start": "08:50", "time_end": "09:20", "session": "FP3",      "cls": "Superbike",  "race": False},
+    {"day": "saturday", "time_start": "09:25", "time_end": "09:45", "session": "FP3",      "cls": "Sportbike",  "race": False},
+    {"day": "saturday", "time_start": "11:00", "time_end": "11:25", "session": "Qualifying","cls": "Supersport","race": False},
+    {"day": "saturday", "time_start": "11:30", "time_end": "11:55", "session": "Qualifying","cls": "Sportbike", "race": False},
+    {"day": "saturday", "time_start": "14:05", "time_end": "14:25", "session": "Race 1",   "cls": "Supersport", "race": True},
+    {"day": "saturday", "time_start": "15:30", "time_end": "15:50", "session": "Race 1",   "cls": "Sportbike",  "race": True},
+    # ── SUNDAY ────────────────────────────────────────────────
+    {"day": "sunday",   "time_start": "08:30", "time_end": "09:00", "session": "Superpole","cls": "Superbike",  "race": False},
+    {"day": "sunday",   "time_start": "09:10", "time_end": "09:25", "session": "Warm-up",  "cls": "Supersport", "race": False},
+    {"day": "sunday",   "time_start": "09:30", "time_end": "09:45", "session": "Warm-up",  "cls": "Sportbike",  "race": False},
+    {"day": "sunday",   "time_start": "09:50", "time_end": "10:05", "session": "Warm-up",  "cls": "Superbike",  "race": False},
+    {"day": "sunday",   "time_start": "10:50", "time_end": "11:15", "session": "Race 1",   "cls": "Superbike",  "race": True},
+    {"day": "sunday",   "time_start": "12:00", "time_end": "12:20", "session": "Race 2",   "cls": "Supersport", "race": True},
+    {"day": "sunday",   "time_start": "13:30", "time_end": "13:50", "session": "Race 2",   "cls": "Sportbike",  "race": True},
+    {"day": "sunday",   "time_start": "15:00", "time_end": "15:25", "session": "Race 2",   "cls": "Superbike",  "race": True},
+]
 
 # Known track GPS coordinates (lat, lon) for weather lookup
 TRACK_COORDINATES: dict[str, tuple[float, float]] = {
@@ -200,6 +250,10 @@ NATION_FLAGS: dict[str, str] = {
 
 # How many driver position sensors to create per class (P1 … P_DRIVER_SENSOR_COUNT)
 DRIVER_SENSOR_COUNT = 10
+
+# Shared day-of-week mappings used across sensor and binary_sensor platforms
+DAY_MAP: dict[str, int] = {"friday": 4, "saturday": 5, "sunday": 6}
+WEEKDAY_DAY: dict[int, str] = {4: "friday", 5: "saturday", 6: "sunday"}
 
 # Browser-like headers to avoid 403 on WordPress sites
 SCRAPER_HEADERS: dict[str, str] = {

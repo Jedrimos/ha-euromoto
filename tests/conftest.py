@@ -35,9 +35,12 @@ _HA_STUBS = [
     "homeassistant.components.sensor",
     "homeassistant.components.calendar",
     "homeassistant.components.weather",
+    "homeassistant.components.binary_sensor",
+    "homeassistant.components.switch",
     "homeassistant.helpers",
     "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.update_coordinator",
+    "homeassistant.helpers.restore_state",
     "homeassistant.data_entry_flow",
     "voluptuous",
     "pdfplumber",
@@ -49,7 +52,8 @@ for _name in _HA_STUBS:
 # Concrete attributes that must be real objects (used in class definitions)
 _ha_const = sys.modules["homeassistant.const"]
 _ha_const.Platform = types.SimpleNamespace(
-    SENSOR="sensor", CALENDAR="calendar", WEATHER="weather"
+    SENSOR="sensor", CALENDAR="calendar", WEATHER="weather",
+    BINARY_SENSOR="binary_sensor", SWITCH="switch",
 )  # type: ignore[assignment]
 
 # UnitOf* constants used by weather.py
@@ -92,6 +96,16 @@ _ha_calendar.CalendarEvent = _CalendarEvent  # type: ignore[assignment]
 
 _ha_weather = sys.modules["homeassistant.components.weather"]
 _ha_weather.WeatherEntity = object  # type: ignore[assignment]
+
+_ha_binary = sys.modules["homeassistant.components.binary_sensor"]
+_ha_binary.BinarySensorEntity = object  # type: ignore[assignment]
+_ha_binary.BinarySensorDeviceClass = types.SimpleNamespace(RUNNING="running")  # type: ignore[assignment]
+
+_ha_switch = sys.modules["homeassistant.components.switch"]
+_ha_switch.SwitchEntity = object  # type: ignore[assignment]
+
+_ha_restore = sys.modules["homeassistant.helpers.restore_state"]
+_ha_restore.RestoreEntity = object  # type: ignore[assignment]
 
 _ha_config = sys.modules["homeassistant.config_entries"]
 _ha_config.ConfigEntry = object  # type: ignore[assignment]
