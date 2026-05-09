@@ -12,17 +12,18 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    DOMAIN,
+    CONF_CLASSES,
+    CONF_FAVORITE_RIDERS,
     CLASS_SUPERBIKE,
     CLASS_SUPERSPORT,
     CLASS_SPORTBIKE,
-    CONF_CLASSES,
-    CONF_FAVORITE_RIDERS,
+    DAY_MAP,
+    DOMAIN,
     DRIVER_SENSOR_COUNT,
+    LIVETIMING_URL,
+    LIVESTREAM_URL,
     NATION_FLAGS,
     TICKETS_URL,
-    LIVESTREAM_URL,
-    LIVETIMING_URL,
 )
 from .coordinator import EuroMotoCoordinator, EuroMotoData
 from .scraper import TrackEvent
@@ -457,15 +458,10 @@ class RaceWeekendSensor(_EuroMotoSensor):
 
 
 # ---------------------------------------------------------------------------
-# Weekend Schedule Sensor
+# Schedule helpers
 # ---------------------------------------------------------------------------
 
-_DAY_MAP = {
-    "friday": 4, "saturday": 5, "sunday": 6,
-}
-_DAY_DE = {
-    "friday": "Freitag", "saturday": "Samstag", "sunday": "Sonntag",
-}
+_DAY_DE = {"friday": "Freitag", "saturday": "Samstag", "sunday": "Sonntag"}
 _SESSION_ICON = {
     "FP1": "🔵", "FP2": "🔵", "FP3": "🔵",
     "Training": "🔵",
@@ -476,26 +472,59 @@ _SESSION_ICON = {
 }
 
 
+def _event_start(calendar: list) -> date | None:
+    """Return the start date of the next or current event."""
+    today = date.today()
+    for ev in calendar:
+        if ev.date_end.date() >= today:
+            return ev.date_start.date()
+    return None
+
+
 def _sessions_for_day(schedule: list[dict], day: str) -> list[dict]:
     return [s for s in schedule if s.get("day") == day]
 
 
 def _next_session(schedule: list[dict], event_date_start: date) -> dict | None:
-    """Return the first session that hasn't finished yet relative to now."""
+    """Return the first session that hasn't finished yet."""
     now = datetime.now()
-    for day_key, weekday_offset in _DAY_MAP.items():
+    for day_key, weekday_offset in DAY_MAP.items():
         session_date = event_date_start + timedelta(
             days=(weekday_offset - event_date_start.weekday()) % 7
         )
         for s in _sessions_for_day(schedule, day_key):
             try:
-                h, m = map(int, s["time_end"].split(":")) if s.get("time_end") else map(int, s["time_start"].split(":"))
+                h, m = (
+                    map(int, s["time_end"].split(":"))
+                    if s.get("time_end")
+                    else map(int, s["time_start"].split(":"))
+                )
                 session_end = datetime.combine(session_date, time(h, m))
                 if session_end > now:
                     return {**s, "date": session_date.isoformat()}
             except (ValueError, AttributeError):
                 continue
     return None
+
+
+def _upcoming_session(
+    schedule: list[dict], event_date_start: date
+) -> tuple[int | None, dict | None]:
+    """Return (minutes_until_start, session) for the next session not yet started."""
+    now = datetime.now()
+    for day_key, weekday_offset in DAY_MAP.items():
+        delta = (weekday_offset - event_date_start.weekday()) % 7
+        session_date = event_date_start + timedelta(days=delta)
+        for s in _sessions_for_day(schedule, day_key):
+            try:
+                h, m = map(int, s["time_start"].split(":"))
+                session_start = datetime.combine(session_date, time(h, m))
+                diff = (session_start - now).total_seconds() / 60
+                if diff > 0:
+                    return round(diff), s
+            except (ValueError, AttributeError, KeyError):
+                continue
+    return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -509,50 +538,34 @@ class SessionCountdownSensor(_EuroMotoSensor):
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "session_countdown")
+        self._cached_minutes: int | None = None
+        self._cached_next: dict | None = None
 
-    def _event_start(self) -> date | None:
-        today = date.today()
-        for ev in self.coordinator.data.calendar:
-            if ev.date_end.date() >= today:
-                return ev.date_start.date()
-        return None
+    def _handle_coordinator_update(self) -> None:
+        start = _event_start(self.coordinator.data.calendar)
+        if start and self.coordinator.data.schedule:
+            self._cached_minutes, self._cached_next = _upcoming_session(
+                self.coordinator.data.schedule, start
+            )
+        else:
+            self._cached_minutes, self._cached_next = None, None
+        super()._handle_coordinator_update()
 
     @property
     def native_value(self) -> int | None:
-        schedule = self.coordinator.data.schedule
-        start = self._event_start()
-        if not schedule or not start:
-            return None
-        now = datetime.now()
-        for day_key, weekday_offset in _DAY_MAP.items():
-            delta = (weekday_offset - start.weekday()) % 7
-            session_date = start + timedelta(days=delta)
-            for s in _sessions_for_day(schedule, day_key):
-                try:
-                    h, m = map(int, s["time_start"].split(":"))
-                    session_start = datetime.combine(session_date, time(h, m))
-                    diff = (session_start - now).total_seconds() / 60
-                    if diff > 0:
-                        return round(diff)
-                except (ValueError, AttributeError, KeyError):
-                    continue
-        return None
+        return self._cached_minutes
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        schedule = self.coordinator.data.schedule
-        start = self._event_start()
-        if not schedule or not start:
-            return {}
-        nxt = _next_session(schedule, start)
-        if not nxt:
+        s = self._cached_next
+        if not s:
             return {}
         return {
-            "session": nxt.get("session"),
-            "class": nxt.get("cls"),
-            "day": _DAY_DE.get(nxt.get("day", ""), nxt.get("day", "")),
-            "time_start": nxt.get("time_start"),
-            "time_end": nxt.get("time_end"),
+            "session": s.get("session"),
+            "class": s.get("cls"),
+            "day": _DAY_DE.get(s.get("day", ""), s.get("day", "")),
+            "time_start": s.get("time_start"),
+            "time_end": s.get("time_end"),
         }
 
 
@@ -563,17 +576,10 @@ class WeekendScheduleSensor(_EuroMotoSensor):
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "weekend_schedule")
 
-    def _event_start(self) -> date | None:
-        today = date.today()
-        for ev in self.coordinator.data.calendar:
-            if ev.date_end.date() >= today:
-                return ev.date_start.date()
-        return None
-
     @property
     def native_value(self) -> str | None:
         schedule = self.coordinator.data.schedule
-        start = self._event_start()
+        start = _event_start(self.coordinator.data.calendar)
         if not schedule or not start:
             return None
         nxt = _next_session(schedule, start)
@@ -586,29 +592,27 @@ class WeekendScheduleSensor(_EuroMotoSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         schedule = self.coordinator.data.schedule
-        start = self._event_start()
+        start = _event_start(self.coordinator.data.calendar)
         if not schedule:
             return {}
 
-        def _format(s: dict, event_start: date | None) -> dict:
-            icon = _SESSION_ICON.get(s.get("session", ""), "📋")
-            day_de = _DAY_DE.get(s.get("day", ""), s.get("day", ""))
+        def _format(s: dict) -> dict:
             time_range = s["time_start"]
             if s.get("time_end"):
                 time_range += f"–{s['time_end']}"
             return {
-                "day": day_de,
+                "day": _DAY_DE.get(s.get("day", ""), s.get("day", "")),
                 "time": time_range,
                 "session": s.get("session"),
                 "class": s.get("cls"),
-                "icon": icon,
+                "icon": _SESSION_ICON.get(s.get("session", ""), "📋"),
                 "is_race": s.get("race", False),
             }
 
         return {
             "next_session": _next_session(schedule, start) if start else None,
-            "friday": [_format(s, start) for s in _sessions_for_day(schedule, "friday")],
-            "saturday": [_format(s, start) for s in _sessions_for_day(schedule, "saturday")],
-            "sunday": [_format(s, start) for s in _sessions_for_day(schedule, "sunday")],
-            "all_sessions": [_format(s, start) for s in schedule],
+            "friday": [_format(s) for s in _sessions_for_day(schedule, "friday")],
+            "saturday": [_format(s) for s in _sessions_for_day(schedule, "saturday")],
+            "sunday": [_format(s) for s in _sessions_for_day(schedule, "sunday")],
+            "all_sessions": [_format(s) for s in schedule],
         }

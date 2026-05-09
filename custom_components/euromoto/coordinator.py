@@ -90,6 +90,7 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         self._enabled_classes = enabled_classes
         self._favorite_riders = favorite_riders or []
         self._session: aiohttp.ClientSession | None = None
+        self._track_details_cache: dict[str, dict[str, Any]] = {}
         super().__init__(
             hass,
             _LOGGER,
@@ -129,16 +130,18 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
         calendar = calendar_task.result()
 
-        # Enrich events with track details; always merge with hardcoded fallback
+        # Enrich events with track details; cache scraped data to avoid re-fetching
         for event in calendar:
             slug = _track_slug(event)
             if slug:
-                try:
-                    scraped = await scraper.fetch_track_details(slug)
-                except Exception as exc:
-                    _LOGGER.debug("Could not scrape details for %s: %s", slug, exc)
-                    scraped = {}
-                event.details = _merge_fallback(scraped, slug)
+                if slug not in self._track_details_cache:
+                    try:
+                        scraped = await scraper.fetch_track_details(slug)
+                    except Exception as exc:
+                        _LOGGER.debug("Could not scrape details for %s: %s", slug, exc)
+                        scraped = {}
+                    self._track_details_cache[slug] = _merge_fallback(scraped, slug)
+                event.details = self._track_details_cache[slug]
             elif event.name:
                 # Try to match fallback by name
                 name_slug = event.name.lower().replace(" ", "").replace("ü", "ue")

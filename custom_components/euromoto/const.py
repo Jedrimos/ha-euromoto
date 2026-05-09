@@ -251,6 +251,10 @@ NATION_FLAGS: dict[str, str] = {
 # How many driver position sensors to create per class (P1 … P_DRIVER_SENSOR_COUNT)
 DRIVER_SENSOR_COUNT = 10
 
+# Shared day-of-week mappings used across sensor and binary_sensor platforms
+DAY_MAP: dict[str, int] = {"friday": 4, "saturday": 5, "sunday": 6}
+WEEKDAY_DAY: dict[int, str] = {4: "friday", 5: "saturday", 6: "sunday"}
+
 # Browser-like headers to avoid 403 on WordPress sites
 SCRAPER_HEADERS: dict[str, str] = {
     "User-Agent": (

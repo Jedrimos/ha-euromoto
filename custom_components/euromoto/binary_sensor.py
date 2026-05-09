@@ -4,17 +4,22 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, LIVETIMING_URL, LIVESTREAM_URL
+from .const import (
+    DAY_MAP,
+    DOMAIN,
+    LIVETIMING_URL,
+    LIVESTREAM_URL,
+    NATION_FLAGS,
+    WEEKDAY_DAY,
+)
 from .coordinator import EuroMotoCoordinator
 from .scraper import TrackEvent
-
-_DAY_WEEKDAY = {"friday": 4, "saturday": 5, "sunday": 6}
 
 
 def _active_event(calendar: list[TrackEvent]) -> TrackEvent | None:
@@ -28,15 +33,13 @@ def _active_event(calendar: list[TrackEvent]) -> TrackEvent | None:
 def _session_state(
     schedule: list[dict], event_start: date
 ) -> tuple[bool, bool, dict | None]:
-    """Return (any_session_active, race_active, session_dict)."""
+    """Return (any_session_active, race_active, session_dict) for the current moment."""
     now = datetime.now()
-    current_weekday = now.weekday()
-    day_key = {4: "friday", 5: "saturday", 6: "sunday"}.get(current_weekday)
+    day_key = WEEKDAY_DAY.get(now.weekday())
     if not day_key:
         return False, False, None
 
-    target_weekday = _DAY_WEEKDAY[day_key]
-    delta = (target_weekday - event_start.weekday()) % 7
+    delta = (DAY_MAP[day_key] - event_start.weekday()) % 7
     session_date = event_start + timedelta(days=delta)
 
     for s in schedule:
@@ -79,15 +82,19 @@ class _EuroMotoBinarySensor(
     def __init__(self, coordinator: EuroMotoCoordinator, unique_suffix: str) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"euromoto_{unique_suffix}"
+        self._cached_ev: TrackEvent | None = None
+        self._cached_session: tuple[bool, bool, dict | None] = (False, False, None)
 
-    def _active_ev(self) -> TrackEvent | None:
-        return _active_event(self.coordinator.data.calendar)
-
-    def _session_info(self) -> tuple[bool, bool, dict | None]:
-        ev = self._active_ev()
-        if not ev:
-            return False, False, None
-        return _session_state(self.coordinator.data.schedule, ev.date_start.date())
+    def _handle_coordinator_update(self) -> None:
+        """Compute shared state once per coordinator push, before HA reads properties."""
+        self._cached_ev = _active_event(self.coordinator.data.calendar)
+        if self._cached_ev:
+            self._cached_session = _session_state(
+                self.coordinator.data.schedule, self._cached_ev.date_start.date()
+            )
+        else:
+            self._cached_session = (False, False, None)
+        super()._handle_coordinator_update()
 
 
 class RaceWeekendBinarySensor(_EuroMotoBinarySensor):
@@ -100,14 +107,13 @@ class RaceWeekendBinarySensor(_EuroMotoBinarySensor):
 
     @property
     def is_on(self) -> bool:
-        return self._active_ev() is not None
+        return self._cached_ev is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        ev = self._active_ev()
+        ev = self._cached_ev
         if not ev:
             return {}
-        from .const import NATION_FLAGS
         return {
             "event_name": ev.name,
             "country": ev.country,
@@ -127,12 +133,12 @@ class SessionActiveBinarySensor(_EuroMotoBinarySensor):
 
     @property
     def is_on(self) -> bool:
-        active, _, _ = self._session_info()
+        active, _, _ = self._cached_session
         return active
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        _, _, s = self._session_info()
+        _, _, s = self._cached_session
         if not s:
             return {}
         return {
@@ -154,12 +160,12 @@ class RaceActiveBinarySensor(_EuroMotoBinarySensor):
 
     @property
     def is_on(self) -> bool:
-        _, race_active, _ = self._session_info()
+        _, race_active, _ = self._cached_session
         return race_active
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        _, is_race, s = self._session_info()
+        _, is_race, s = self._cached_session
         if not s or not is_race:
             return {}
         return {
