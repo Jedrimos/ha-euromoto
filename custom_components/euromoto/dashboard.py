@@ -27,18 +27,14 @@ def _load_config() -> dict:
 async def async_register_dashboard(hass: HomeAssistant) -> None:
     """Create the EuroMoto sidebar dashboard (appears immediately, no restart needed)."""
     try:
-        # 1. Write Lovelace card config to storage (always refresh to pick up updates)
+        # 1. Always overwrite Lovelace config so updates from the YAML take effect.
         store: Store = Store(hass, _STORAGE_VERSION, _STORAGE_KEY)
-        existing = await store.async_load()
-        # Overwrite if empty/missing OR if the stored config has no views (stale placeholder)
-        stored_views = (existing or {}).get("config", {}).get("views") if existing else None
-        if not stored_views:
-            try:
-                config = await hass.async_add_executor_job(_load_config)
-                await store.async_save({"config": config})
-                _LOGGER.debug("EuroMoto: wrote dashboard config to storage (%d views)", len(config.get("views", [])))
-            except Exception as exc:
-                _LOGGER.warning("EuroMoto: could not load dashboard YAML: %s", exc)
+        try:
+            config = await hass.async_add_executor_job(_load_config)
+            await store.async_save({"config": config})
+            _LOGGER.debug("EuroMoto: wrote dashboard config to storage (%d views)", len(config.get("views", [])))
+        except Exception as exc:
+            _LOGGER.warning("EuroMoto: could not write dashboard YAML to storage: %s", exc)
 
         # 2. Register the panel via the frontend API (works immediately, no restart)
         try:
