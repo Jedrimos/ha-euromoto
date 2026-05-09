@@ -388,13 +388,9 @@ class FavoriteRiderSensor(_EuroMotoSensor):
         return None
 
     @property
-    def available(self) -> bool:
-        return self._find() is not None
-
-    @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str:
         found = self._find()
-        return found[1].get("name") if found else None
+        return found[1].get("name") if found else "–"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -535,26 +531,30 @@ class SessionCountdownSensor(_EuroMotoSensor):
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "session_countdown")
-        self._cached_minutes: int | None = None
-        self._cached_next: dict | None = None
 
-    def _handle_coordinator_update(self) -> None:
-        start = _event_start(self.coordinator.data.calendar)
-        if start and self.coordinator.data.schedule:
-            self._cached_minutes, self._cached_next = _upcoming_session(
-                self.coordinator.data.schedule, start
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        from homeassistant.helpers.event import async_track_time_interval
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass, lambda _: self.async_write_ha_state(), timedelta(minutes=1)
             )
-        else:
-            self._cached_minutes, self._cached_next = None, None
-        super()._handle_coordinator_update()
+        )
+
+    def _values(self) -> tuple[int | None, dict | None]:
+        start = _event_start(self.coordinator.data.calendar)
+        if not start or not self.coordinator.data.schedule:
+            return None, None
+        return _upcoming_session(self.coordinator.data.schedule, start)
 
     @property
     def native_value(self) -> int | None:
-        return self._cached_minutes
+        minutes, _ = self._values()
+        return minutes
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        s = self._cached_next
+        _, s = self._values()
         if not s:
             return {}
         return {

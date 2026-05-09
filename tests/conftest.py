@@ -41,6 +41,7 @@ _HA_STUBS = [
     "homeassistant.helpers.device_registry",
     "homeassistant.helpers.entity_registry",
     "homeassistant.helpers.entity_platform",
+    "homeassistant.helpers.event",
     "homeassistant.helpers.update_coordinator",
     "homeassistant.helpers.restore_state",
     "homeassistant.data_entry_flow",
