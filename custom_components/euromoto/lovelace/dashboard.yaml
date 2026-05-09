@@ -42,7 +42,7 @@ views:
           ## 🟢 {{ flag }} {{ ev }} — {{ day }}
           {% if cd not in ('unknown','unavailable','none','') %}⏳ Nächste Session in **{{ cd }} Min.**{% endif %}
 
-          [▶ Live-Timing](http://livetiming.bike-promotion.com/#/channel/c1) · [📺 Livestream](https://euromoto.racing/live/)
+          [▶ Live-Timing](https://livetiming.raceresults.de/#/channel/c1) · [📺 Livestream](https://euromoto.racing/live/)
           {% else %}
           ## ⚫ Kein aktives Rennwochenende
           {% if cd not in ('unknown','unavailable','none','') %}⏳ Nächste Session in **{{ cd }} Min.**{% endif %}
@@ -77,7 +77,7 @@ views:
           📏 {{ state_attr(e, 'track_length_km') or '–' }} km · {{ state_attr(e, 'track_corners_right') or '–' }} ↩️ · {{ state_attr(e, 'track_corners_left') or '–' }} ↪️ · {{ state_attr(e, 'track_longest_straight_m') or '–' }} m Gerade
           📍 {{ state_attr(e, 'track_address') or '–' }}
 
-          [🎫 Tickets](https://tickets.euromoto.racing/) · [📺 Livestream](https://euromoto.racing/live/) · [⏱️ Live-Timing](http://livetiming.bike-promotion.com/#/channel/c1)
+          [🎫 Tickets](https://tickets.euromoto.racing/) · [📺 Livestream](https://euromoto.racing/live/) · [⏱️ Live-Timing](https://livetiming.raceresults.de/#/channel/c1)
 
       # Saisonkalender
       - type: markdown
@@ -118,13 +118,44 @@ views:
           *Nächstes Event: {{ states('sensor.euromoto_next_event') or '–' }}*
           {% endif %}
 
+      # Live Flag + Session
+      - type: glance
+        show_name: true
+        show_state: true
+        entities:
+          - entity: sensor.euromoto_live_flag
+            name: Flagge
+          - entity: sensor.euromoto_live_session
+            name: Session
+
+      # Live Leaderboard
       - type: markdown
         content: |
-          ## ⏱️ Live-Timing
+          {%- set lt = state_attr('sensor.euromoto_live_leaderboard', 'leaderboard') or [] -%}
+          {%- set flag = state_attr('sensor.euromoto_live_flag', 'flag_icon') or '⚫' -%}
+          {%- set sess = state_attr('sensor.euromoto_live_flag', 'session') or '' -%}
+          {%- set conn = state_attr('sensor.euromoto_live_flag', 'connected') -%}
+          ## {{ flag }} Live-Timing{% if sess %} – {{ sess }}{% endif %}
+          {% if not conn %}*Nicht verbunden – Live-Timing startet automatisch beim nächsten Rennen.*
+          [⏱️ Im Browser öffnen](https://livetiming.raceresults.de/#/channel/c1)
+          {% elif lt %}
+          | Pos | # | Fahrer | Gap | Best Lap |
+          |-----|---|--------|-----|----------|
+          {% for r in lt[:10] -%}
+          | **{{ r.pos }}** | {{ r.number }} | {{ r.name }} | {{ r.gap }} | {{ r.best_lap }} |
+          {% endfor %}
+          {% else %}*Warte auf Daten...*{% endif %}
 
-          [▶ Live-Timing im Browser öffnen](http://livetiming.bike-promotion.com/#/channel/c1)
-
-          *Das Live-Timing läuft nur während aktiver Sessions.*
+      # Incidents / Stürze
+      - type: markdown
+        content: |
+          {%- set inc = state_attr('sensor.euromoto_live_incidents', 'incidents') or [] -%}
+          ## 🚨 Vorfälle & Stürze
+          {% if inc %}
+          {% for i in inc[:8] -%}
+          {% if i.kind == 'crash' %}💥{% elif i.kind == 'sc' %}🚗{% elif i.kind == 'penalty' %}⚠️{% elif i.kind == 'flag' %}🚩{% else %}ℹ️{% endif %} **{{ i.time }}** {% if i.number %}#{{ i.number }} {% endif %}{{ i.rider }} — {{ i.text }}
+          {% endfor %}
+          {% else %}*Keine Vorfälle gemeldet.*{% endif %}
 
       # Tagesplan – Nächste Session
       - type: markdown
@@ -334,7 +365,7 @@ views:
           - Kalender: euromoto.racing
           - Ergebnisse: results.bike-promotion.com (PDF)
           - Wetter: Open-Meteo
-          - Live-Timing: livetiming.bike-promotion.com
+          - Live-Timing: livetiming.raceresults.de
 
           **Konfiguration:**
           Einstellungen → Integrationen → EuroMoto → Konfigurieren
