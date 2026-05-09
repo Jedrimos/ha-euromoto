@@ -39,6 +39,7 @@ _HA_STUBS = [
     "homeassistant.components.switch",
     "homeassistant.helpers",
     "homeassistant.helpers.device_registry",
+    "homeassistant.helpers.entity_registry",
     "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.update_coordinator",
     "homeassistant.helpers.restore_state",
