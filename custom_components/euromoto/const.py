@@ -83,59 +83,58 @@ UPDATE_INTERVAL_NORMAL_HOURS = 6
 UPDATE_INTERVAL_RACE_MINUTES = 30
 
 # ---------------------------------------------------------------------------
-# Typical Euro Moto race weekend schedule (all classes).
-# Includes main IDM classes and all support series:
-# ZX-4RR Cup, ZX-6R Cup, Moto4 Cup (Moto4 Northern Cup), ADAC Cup (ADAC Junior Cup).
-# Times are approximate; live scraping overrides this when available.
+# Euro Moto race weekend schedule – Sachsenring 2026 (confirmed from euromoto.racing).
+# Saturday times are exact; Friday and Sunday are estimated from typical IDM format.
+# Live scraping overrides this when available.
 # day: "friday" | "saturday" | "sunday"
-# session: FP1 / FP2 / FP3 / Q1 / Q2 / Superpole 1 / Superpole 2 / Race 1 / Race 2
 # ---------------------------------------------------------------------------
 SCHEDULE_FALLBACK: list[dict] = [
-    # ── FRIDAY ────────────────────────────────────────────────
-    {"day": "friday",   "time_start": "08:30", "time_end": "09:00", "session": "FP1",         "cls": "Supersport",  "race": False},
-    {"day": "friday",   "time_start": "09:05", "time_end": "09:35", "session": "FP1",         "cls": "Superbike",   "race": False},
-    {"day": "friday",   "time_start": "09:40", "time_end": "10:00", "session": "FP1",         "cls": "Sportbike",   "race": False},
-    {"day": "friday",   "time_start": "10:10", "time_end": "10:30", "session": "FP1",         "cls": "ZX-4RR Cup",  "race": False},
-    {"day": "friday",   "time_start": "10:35", "time_end": "10:55", "session": "FP1",         "cls": "ZX-6R Cup",   "race": False},
-    {"day": "friday",   "time_start": "11:00", "time_end": "11:20", "session": "FP1",         "cls": "Moto4 Cup",   "race": False},
-    {"day": "friday",   "time_start": "11:25", "time_end": "11:45", "session": "FP1",         "cls": "ADAC Cup",    "race": False},
-    {"day": "friday",   "time_start": "14:00", "time_end": "14:30", "session": "FP2",         "cls": "Superbike",   "race": False},
-    {"day": "friday",   "time_start": "14:35", "time_end": "15:05", "session": "FP2",         "cls": "Supersport",  "race": False},
-    {"day": "friday",   "time_start": "15:10", "time_end": "15:30", "session": "FP2",         "cls": "Sportbike",   "race": False},
-    {"day": "friday",   "time_start": "15:35", "time_end": "15:55", "session": "FP2",         "cls": "ZX-4RR Cup",  "race": False},
-    {"day": "friday",   "time_start": "16:00", "time_end": "16:20", "session": "FP2",         "cls": "ZX-6R Cup",   "race": False},
-    {"day": "friday",   "time_start": "16:25", "time_end": "16:45", "session": "FP2",         "cls": "Moto4 Cup",   "race": False},
-    {"day": "friday",   "time_start": "16:50", "time_end": "17:10", "session": "FP2",         "cls": "ADAC Cup",    "race": False},
-    # ── SATURDAY ──────────────────────────────────────────────
-    {"day": "saturday", "time_start": "08:30", "time_end": "09:00", "session": "FP3",         "cls": "Superbike",   "race": False},
-    {"day": "saturday", "time_start": "09:05", "time_end": "09:25", "session": "FP3",         "cls": "Supersport",  "race": False},
-    {"day": "saturday", "time_start": "09:30", "time_end": "09:50", "session": "FP3",         "cls": "Sportbike",   "race": False},
-    {"day": "saturday", "time_start": "10:00", "time_end": "10:20", "session": "Q1",          "cls": "ZX-4RR Cup",  "race": False},
-    {"day": "saturday", "time_start": "10:25", "time_end": "10:45", "session": "Q1",          "cls": "ZX-6R Cup",   "race": False},
-    {"day": "saturday", "time_start": "10:50", "time_end": "11:10", "session": "Q1",          "cls": "Moto4 Cup",   "race": False},
-    {"day": "saturday", "time_start": "11:15", "time_end": "11:35", "session": "Q1",          "cls": "ADAC Cup",    "race": False},
-    {"day": "saturday", "time_start": "11:40", "time_end": "12:00", "session": "Q1",          "cls": "Supersport",  "race": False},
-    {"day": "saturday", "time_start": "12:05", "time_end": "12:25", "session": "Q1",          "cls": "Sportbike",   "race": False},
-    {"day": "saturday", "time_start": "12:30", "time_end": "12:55", "session": "Superpole 1", "cls": "Superbike",   "race": False},
-    {"day": "saturday", "time_start": "14:00", "time_end": "14:20", "session": "Race 1",      "cls": "Supersport",  "race": True},
-    {"day": "saturday", "time_start": "14:30", "time_end": "14:50", "session": "Race 1",      "cls": "ZX-4RR Cup",  "race": True},
-    {"day": "saturday", "time_start": "15:00", "time_end": "15:20", "session": "Race 1",      "cls": "ZX-6R Cup",   "race": True},
-    {"day": "saturday", "time_start": "15:30", "time_end": "15:50", "session": "Race 1",      "cls": "ADAC Cup",    "race": True},
-    {"day": "saturday", "time_start": "16:00", "time_end": "16:20", "session": "Race 1",      "cls": "Sportbike",   "race": True},
-    # ── SUNDAY ────────────────────────────────────────────────
-    {"day": "sunday",   "time_start": "08:30", "time_end": "09:00", "session": "Superpole 2", "cls": "Superbike",   "race": False},
-    {"day": "sunday",   "time_start": "09:10", "time_end": "09:30", "session": "Q2",          "cls": "Supersport",  "race": False},
-    {"day": "sunday",   "time_start": "09:35", "time_end": "09:55", "session": "Q2",          "cls": "Sportbike",   "race": False},
-    {"day": "sunday",   "time_start": "10:05", "time_end": "10:25", "session": "Q2",          "cls": "ZX-4RR Cup",  "race": False},
-    {"day": "sunday",   "time_start": "10:30", "time_end": "10:50", "session": "Q2",          "cls": "ZX-6R Cup",   "race": False},
-    {"day": "sunday",   "time_start": "11:00", "time_end": "11:25", "session": "Race 1",      "cls": "Superbike",   "race": True},
-    {"day": "sunday",   "time_start": "12:00", "time_end": "12:20", "session": "Race 2",      "cls": "Supersport",  "race": True},
-    {"day": "sunday",   "time_start": "12:30", "time_end": "12:50", "session": "Race 1",      "cls": "Moto4 Cup",   "race": True},
-    {"day": "sunday",   "time_start": "13:00", "time_end": "13:20", "session": "Race 2",      "cls": "Sportbike",   "race": True},
-    {"day": "sunday",   "time_start": "13:30", "time_end": "13:50", "session": "Race 1",      "cls": "ADAC Cup",    "race": True},
-    {"day": "sunday",   "time_start": "14:30", "time_end": "15:00", "session": "Race 2",      "cls": "Superbike",   "race": True},
-    {"day": "sunday",   "time_start": "15:10", "time_end": "15:30", "session": "Race 2",      "cls": "ZX-4RR Cup",  "race": True},
-    {"day": "sunday",   "time_start": "15:35", "time_end": "15:55", "session": "Race 2",      "cls": "ZX-6R Cup",   "race": True},
+    # ── FRIDAY (estimated – Friday end confirmed: PreP 17:15, ZX-6R Q1 17:55) ──
+    {"day": "friday",   "time_start": "08:00", "time_end": "08:30", "session": "FP1",   "cls": "Supersport",  "race": False},
+    {"day": "friday",   "time_start": "08:35", "time_end": "09:05", "session": "FP1",   "cls": "Superbike",   "race": False},
+    {"day": "friday",   "time_start": "09:10", "time_end": "09:30", "session": "FP1",   "cls": "Sportbike",   "race": False},
+    {"day": "friday",   "time_start": "09:35", "time_end": "09:55", "session": "FP1",   "cls": "ZX-4RR Cup",  "race": False},
+    {"day": "friday",   "time_start": "10:00", "time_end": "10:20", "session": "FP1",   "cls": "Moto4 Cup",   "race": False},
+    {"day": "friday",   "time_start": "10:25", "time_end": "10:45", "session": "FP1",   "cls": "ADAC Cup",    "race": False},
+    {"day": "friday",   "time_start": "13:00", "time_end": "13:30", "session": "FP2",   "cls": "Superbike",   "race": False},
+    {"day": "friday",   "time_start": "13:35", "time_end": "14:05", "session": "FP2",   "cls": "Supersport",  "race": False},
+    {"day": "friday",   "time_start": "14:10", "time_end": "14:30", "session": "FP2",   "cls": "Sportbike",   "race": False},
+    {"day": "friday",   "time_start": "14:35", "time_end": "14:55", "session": "FP2",   "cls": "ZX-4RR Cup",  "race": False},
+    {"day": "friday",   "time_start": "15:00", "time_end": "15:20", "session": "FP2",   "cls": "Moto4 Cup",   "race": False},
+    {"day": "friday",   "time_start": "15:25", "time_end": "15:45", "session": "FP2",   "cls": "ADAC Cup",    "race": False},
+    {"day": "friday",   "time_start": "16:00", "time_end": "16:30", "session": "Q1",    "cls": "ZX-4RR Cup",  "race": False},
+    {"day": "friday",   "time_start": "17:15", "time_end": "17:45", "session": "PreP",  "cls": "Superbike",   "race": False},
+    {"day": "friday",   "time_start": "17:55", "time_end": "18:15", "session": "Q1",    "cls": "ZX-6R Cup",   "race": False},
+    # ── SATURDAY (confirmed from euromoto.racing, Sachsenring 09.05.2026) ──────
+    {"day": "saturday", "time_start": "08:15", "time_end": "08:40", "session": "Q1",          "cls": "Supersport",  "race": False},
+    {"day": "saturday", "time_start": "08:45", "time_end": "09:10", "session": "Q1",          "cls": "Sportbike",   "race": False},
+    {"day": "saturday", "time_start": "09:15", "time_end": "09:45", "session": "FP3",         "cls": "Superbike",   "race": False},
+    {"day": "saturday", "time_start": "09:55", "time_end": "10:15", "session": "Q2",          "cls": "ZX-4RR Cup",  "race": False},
+    {"day": "saturday", "time_start": "10:25", "time_end": "10:55", "session": "Q1",          "cls": "Moto4 Cup",   "race": False},
+    {"day": "saturday", "time_start": "11:05", "time_end": "11:25", "session": "Q2",          "cls": "ZX-6R Cup",   "race": False},
+    {"day": "saturday", "time_start": "11:35", "time_end": "11:55", "session": "Q1",          "cls": "ADAC Cup",    "race": False},
+    {"day": "saturday", "time_start": "12:05", "time_end": "12:30", "session": "Q2",          "cls": "Supersport",  "race": False},
+    {"day": "saturday", "time_start": "12:35", "time_end": "13:00", "session": "Q2",          "cls": "Sportbike",   "race": False},
+    {"day": "saturday", "time_start": "13:05", "time_end": "13:20", "session": "Superpole 1", "cls": "Superbike",   "race": False},
+    {"day": "saturday", "time_start": "13:30", "time_end": "13:45", "session": "Superpole 2", "cls": "Superbike",   "race": False},
+    {"day": "saturday", "time_start": "14:05", "time_end": "14:40", "session": "Race 1",      "cls": "Moto4 Cup",   "race": True},
+    {"day": "saturday", "time_start": "14:55", "time_end": "15:30", "session": "Race 1",      "cls": "Supersport",  "race": True},
+    {"day": "saturday", "time_start": "15:45", "time_end": "16:15", "session": "Race 1",      "cls": "Sportbike",   "race": True},
+    {"day": "saturday", "time_start": "16:25", "time_end": "16:55", "session": "Race 1",      "cls": "ZX-4RR Cup",  "race": True},
+    {"day": "saturday", "time_start": "17:05", "time_end": "17:35", "session": "Race 1",      "cls": "ZX-6R Cup",   "race": True},
+    {"day": "saturday", "time_start": "17:45", "time_end": "18:15", "session": "Race 1",      "cls": "ADAC Cup",    "race": True},
+    # ── SUNDAY (estimated – Superbike R1+R2 and Race 2 for remaining classes) ──
+    {"day": "sunday",   "time_start": "09:00", "time_end": "09:15", "session": "Warm-up", "cls": "Superbike",   "race": False},
+    {"day": "sunday",   "time_start": "09:20", "time_end": "09:35", "session": "Warm-up", "cls": "Supersport",  "race": False},
+    {"day": "sunday",   "time_start": "09:40", "time_end": "09:55", "session": "Warm-up", "cls": "Sportbike",   "race": False},
+    {"day": "sunday",   "time_start": "11:00", "time_end": "11:35", "session": "Race 1",  "cls": "Superbike",   "race": True},
+    {"day": "sunday",   "time_start": "12:00", "time_end": "12:30", "session": "Race 2",  "cls": "Supersport",  "race": True},
+    {"day": "sunday",   "time_start": "12:45", "time_end": "13:15", "session": "Race 2",  "cls": "Sportbike",   "race": True},
+    {"day": "sunday",   "time_start": "13:30", "time_end": "14:00", "session": "Race 2",  "cls": "ZX-4RR Cup",  "race": True},
+    {"day": "sunday",   "time_start": "14:15", "time_end": "14:45", "session": "Race 2",  "cls": "ZX-6R Cup",   "race": True},
+    {"day": "sunday",   "time_start": "15:00", "time_end": "15:30", "session": "Race 2",  "cls": "Moto4 Cup",   "race": True},
+    {"day": "sunday",   "time_start": "15:45", "time_end": "16:15", "session": "Race 2",  "cls": "ADAC Cup",    "race": True},
+    {"day": "sunday",   "time_start": "16:30", "time_end": "17:05", "session": "Race 2",  "cls": "Superbike",   "race": True},
 ]
 
 # Known track GPS coordinates (lat, lon) for weather lookup
@@ -251,6 +250,16 @@ GRID_PDF_URL_TEMPLATES = [
     "{base}/{year}/{round:02d}%20IDM/IDM%20Superpole%20IDM_{cls}.pdf",
 ]
 GRID_PDF_BASE_URL = "https://results.bike-promotion.com/Results"
+
+# Schedule / timetable PDFs – tried in order until one succeeds
+SCHEDULE_PDF_URL_TEMPLATES = [
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Zeitplan.pdf",
+    "{base}/{year}/{round:02d}%20IDM/Zeitplan.pdf",
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Programm.pdf",
+    "{base}/{year}/{round:02d}%20IDM/Programm.pdf",
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Timetable.pdf",
+    "{base}/{year}/{round:02d}%20IDM/Timetable.pdf",
+]
 
 # ISO 3166-1 alpha-2 → flag emoji
 NATION_FLAGS: dict[str, str] = {

@@ -13,6 +13,7 @@ from .const import (
     GRID_PDF_BASE_URL,
     GRID_PDF_URL_TEMPLATES,
     NATION_FLAGS,
+    SCHEDULE_PDF_URL_TEMPLATES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -201,4 +202,39 @@ class EuroMotoPdfParser:
                         _LOGGER.warning("Error parsing grid PDF %s: %s", url, exc)
 
         _LOGGER.info("No starting grid PDF found for %s %d", cls, year)
+        return []
+
+    async def fetch_schedule(self, round_num: int, year: int | None = None) -> list[str]:
+        """Try to download a schedule PDF from results.bike-promotion.com.
+
+        Returns the extracted text lines (one per line) on success, [] otherwise.
+        The caller (scraper) can then run _parse_schedule() on them.
+        """
+        import datetime as dt
+
+        if year is None:
+            year = dt.date.today().year
+
+        for tpl in SCHEDULE_PDF_URL_TEMPLATES:
+            url = tpl.format(base=GRID_PDF_BASE_URL, year=year, round=round_num)
+            data = await self._fetch_bytes(url)
+            if data is None:
+                continue
+            try:
+                import io
+                import pdfplumber
+                lines: list[str] = []
+                with pdfplumber.open(io.BytesIO(data)) as pdf:
+                    for page in pdf.pages:
+                        text = page.extract_text() or ""
+                        lines.extend(text.splitlines())
+                if lines:
+                    _LOGGER.debug("Schedule PDF found at %s (%d lines)", url, len(lines))
+                    return lines
+            except ImportError:
+                _LOGGER.debug("pdfplumber not available for schedule PDF")
+                return []
+            except Exception as exc:
+                _LOGGER.debug("Error parsing schedule PDF %s: %s", url, exc)
+
         return []

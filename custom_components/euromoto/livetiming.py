@@ -24,7 +24,8 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-_BASE = "http://livetiming.bike-promotion.com"
+_BASE = "https://livetiming.bike-promotion.com"
+_BASE_HTTP = "http://livetiming.bike-promotion.com"
 _PROTO = "1.5"
 _GROUP = "w"
 
@@ -121,14 +122,19 @@ class EuroMotoLiveTiming:
 
     async def _run(self) -> None:
         backoff = 15
+        attempts = 0
         while True:
             try:
                 await self._connect_once()
                 backoff = 15
+                attempts = 0
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                _LOGGER.debug("Live timing disconnected: %s – retry in %ds", exc, backoff)
+                attempts += 1
+                lvl = _LOGGER.warning if attempts <= 3 else _LOGGER.debug
+                lvl("EuroMoto live timing: connection failed (attempt %d): %s – retry in %ds", attempts, exc, backoff)
+            self._state.connected = False
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 300)
 
@@ -140,21 +146,33 @@ class EuroMotoLiveTiming:
             "_gr": _GROUP,
             "_": ts,
         }
-        async with self._session.get(
-            f"{_BASE}/lt/negotiate",
-            params=params,
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as resp:
-            resp.raise_for_status()
-            data = await resp.json(content_type=None)
+        # Try HTTPS first, fall back to HTTP
+        base = _BASE
+        data: dict = {}
+        for candidate_base in (_BASE, _BASE_HTTP):
+            try:
+                async with self._session.get(
+                    f"{candidate_base}/lt/negotiate",
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    resp.raise_for_status()
+                    data = await resp.json(content_type=None)
+                base = candidate_base
+                break
+            except Exception as exc:
+                _LOGGER.debug("Negotiate failed at %s: %s", candidate_base, exc)
+                if candidate_base == _BASE_HTTP:
+                    raise
 
         token: str = data.get("ConnectionToken", "")
         if not token:
-            raise RuntimeError("No ConnectionToken in negotiate response")
+            raise RuntimeError(f"No ConnectionToken in negotiate response: {data}")
 
-        host = _BASE.split("://", 1)[1]
+        scheme = "wss" if base.startswith("https") else "ws"
+        host = base.split("://", 1)[1]
         ws_url = (
-            f"ws://{host}/lt/connect"
+            f"{scheme}://{host}/lt/connect"
             f"?transport=webSockets"
             f"&clientProtocol={_PROTO}"
             f"&_tk={quote(self._tenant_id, safe='')}"
@@ -162,6 +180,7 @@ class EuroMotoLiveTiming:
             f"&connectionToken={quote(token, safe='')}"
             f"&tid=0"
         )
+        _LOGGER.debug("EuroMoto live timing: connecting to %s", ws_url)
         async with self._session.ws_connect(
             ws_url,
             timeout=aiohttp.ClientTimeout(total=None),
@@ -169,12 +188,12 @@ class EuroMotoLiveTiming:
         ) as ws:
             # Step 3: start handshake (fire-and-forget)
             asyncio.create_task(self._session.get(
-                f"{_BASE}/lt/start",
+                f"{base}/lt/start",
                 params={**params, "transport": "webSockets", "connectionToken": token},
             ))
             self._state.connected = True
             self._notify()
-            _LOGGER.info("EuroMoto live timing: WebSocket connected (tenant=%s)", self._tenant_id)
+            _LOGGER.info("EuroMoto live timing: connected (tenant=%s, base=%s)", self._tenant_id, base)
 
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
