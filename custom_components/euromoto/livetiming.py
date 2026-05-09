@@ -24,10 +24,22 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-_BASE = "https://livetiming.bike-promotion.com"
-_BASE_HTTP = "http://livetiming.bike-promotion.com"
+_HOST = "livetiming.bike-promotion.com"
 _PROTO = "1.5"
 _GROUP = "w"
+
+# Candidate (base, hub_path) pairs tried in order during negotiate.
+# The 404 on /lt/ means that prefix is wrong; /signalr/ is the most common
+# ASP.NET SignalR default.  We try several until one succeeds.
+_NEGOTIATE_CANDIDATES = [
+    (f"https://{_HOST}", "/signalr"),
+    (f"https://{_HOST}", "/lt"),
+    (f"https://{_HOST}", ""),
+    (f"https://{_HOST}", "/hub"),
+    (f"http://{_HOST}", "/signalr"),
+    (f"http://{_HOST}", "/lt"),
+    (f"http://{_HOST}", ""),
+]
 
 _FLAG_MAP = {
     -1: "green", 0: "green",
@@ -146,24 +158,30 @@ class EuroMotoLiveTiming:
             "_gr": _GROUP,
             "_": ts,
         }
-        # Try HTTPS first, fall back to HTTP
-        base = _BASE
+        # Probe candidate (base, hub_path) pairs until negotiate succeeds
+        base = ""
+        hub_path = ""
         data: dict = {}
-        for candidate_base in (_BASE, _BASE_HTTP):
+        last_exc: Exception = RuntimeError("No negotiate candidate succeeded")
+        for candidate_base, candidate_hub in _NEGOTIATE_CANDIDATES:
+            url = f"{candidate_base}{candidate_hub}/negotiate"
             try:
                 async with self._session.get(
-                    f"{candidate_base}/lt/negotiate",
+                    url,
                     params=params,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     resp.raise_for_status()
                     data = await resp.json(content_type=None)
                 base = candidate_base
+                hub_path = candidate_hub
+                _LOGGER.debug("Negotiate succeeded at %s", url)
                 break
             except Exception as exc:
-                _LOGGER.debug("Negotiate failed at %s: %s", candidate_base, exc)
-                if candidate_base == _BASE_HTTP:
-                    raise
+                _LOGGER.debug("Negotiate failed at %s: %s", url, exc)
+                last_exc = exc
+        else:
+            raise last_exc
 
         token: str = data.get("ConnectionToken", "")
         if not token:
@@ -172,7 +190,7 @@ class EuroMotoLiveTiming:
         scheme = "wss" if base.startswith("https") else "ws"
         host = base.split("://", 1)[1]
         ws_url = (
-            f"{scheme}://{host}/lt/connect"
+            f"{scheme}://{host}{hub_path}/connect"
             f"?transport=webSockets"
             f"&clientProtocol={_PROTO}"
             f"&_tk={quote(self._tenant_id, safe='')}"
@@ -188,7 +206,7 @@ class EuroMotoLiveTiming:
         ) as ws:
             # Step 3: start handshake (fire-and-forget)
             asyncio.create_task(self._session.get(
-                f"{base}/lt/start",
+                f"{base}{hub_path}/start",
                 params={**params, "transport": "webSockets", "connectionToken": token},
             ))
             self._state.connected = True
