@@ -236,6 +236,72 @@ views:
           {% endif %}
 
   # ============================================================
+  # TAGESPLAN
+  # ============================================================
+  - title: Tagesplan
+    icon: mdi:calendar-clock
+    path: euromoto-schedule
+    cards:
+
+      # Nächste Session
+      - type: markdown
+        content: >
+          ## ⏱️ Nächste Session
+          {% set s = state_attr('sensor.euromoto_weekend_schedule', 'next_session') %}
+          {% if s %}
+          {% set icon = {'FP1':'🔵','FP2':'🔵','FP3':'🔵','Training':'🔵','PreP':'🟡','Qualifying':'🟡','Superpole':'🟡','Warm-up':'🟠','Race 1':'🏁','Race 2':'🏁'} %}
+          ### {{ icon.get(s.session, '📋') }} {{ s.session }} – {{ s.cls }}
+          🕐 **{{ s.time_start }}** Uhr {% if s.time_end %}bis {{ s.time_end }} Uhr{% endif %}
+          {% else %}
+          *Kein weiteres Event dieses Wochenende*
+          {% endif %}
+
+      # Freitag
+      - type: markdown
+        content: >
+          ## 🔵 Freitag – Training
+          {% set sessions = state_attr('sensor.euromoto_weekend_schedule', 'friday') or [] %}
+          {% if sessions %}
+          | Uhrzeit | Session | Klasse |
+          |:---:|---|---|
+          {% for s in sessions %}
+          | **{{ s.time }}** | {{ s.icon }} {{ s.session }} | {{ s.class }} |
+          {% endfor %}
+          {% else %}
+          *Kein Freitag-Programm verfügbar*
+          {% endif %}
+
+      # Samstag
+      - type: markdown
+        content: >
+          ## 🟡 Samstag – Training & Qualifying & Rennen
+          {% set sessions = state_attr('sensor.euromoto_weekend_schedule', 'saturday') or [] %}
+          {% if sessions %}
+          | Uhrzeit | Session | Klasse |
+          |:---:|---|---|
+          {% for s in sessions %}
+          | **{{ s.time }}** | {{ s.icon }} {{ s.session }} | {{ s.class }} |
+          {% endfor %}
+          {% else %}
+          *Kein Samstag-Programm verfügbar*
+          {% endif %}
+
+      # Sonntag
+      - type: markdown
+        content: >
+          ## 🏁 Sonntag – Superpole & Rennen
+          {% set sessions = state_attr('sensor.euromoto_weekend_schedule', 'sunday') or [] %}
+          {% if sessions %}
+          | Uhrzeit | Session | Klasse |
+          |:---:|---|---|
+          {% for s in sessions %}
+          | **{{ s.time }}** | {{ s.icon }} {{ s.session }} | {{ s.class }} |
+          {% endfor %}
+          {% else %}
+          *Kein Sonntag-Programm verfügbar*
+          {% endif %}
+
+  # ============================================================
   # MEINE FAHRER (Favoriten)
   # ============================================================
   - title: Meine Fahrer

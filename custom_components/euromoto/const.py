@@ -63,6 +63,42 @@ LIVETIMING_URL = "http://livetiming.bike-promotion.com/#/channel/c1"
 UPDATE_INTERVAL_NORMAL_HOURS = 6
 UPDATE_INTERVAL_RACE_MINUTES = 30
 
+# ---------------------------------------------------------------------------
+# Typical Euro Moto race weekend schedule (Sachsenring 2026 confirmed times,
+# other sessions estimated from typical IDM format).
+# Source: speedweek.com / sachsenring-circuit.com PDF
+# day: "friday" | "saturday" | "sunday"
+# session: FP1 / FP2 / PreP / Superpole / Warm-up / Race 1 / Race 2
+# cls: "Superbike" | "Supersport" | "Sportbike" | "Support"
+# ---------------------------------------------------------------------------
+SCHEDULE_FALLBACK: list[dict] = [
+    # ── FRIDAY ────────────────────────────────────────────────
+    {"day": "friday",   "time_start": "08:30", "time_end": "09:00", "session": "FP1",      "cls": "Supersport", "race": False},
+    {"day": "friday",   "time_start": "09:05", "time_end": "09:35", "session": "FP1",      "cls": "Superbike",  "race": False},
+    {"day": "friday",   "time_start": "11:15", "time_end": "11:35", "session": "FP1",      "cls": "Sportbike",  "race": False},
+    {"day": "friday",   "time_start": "14:00", "time_end": "14:30", "session": "FP2",      "cls": "Superbike",  "race": False},
+    {"day": "friday",   "time_start": "14:35", "time_end": "15:00", "session": "FP2",      "cls": "Supersport", "race": False},
+    {"day": "friday",   "time_start": "15:05", "time_end": "15:25", "session": "FP2",      "cls": "Sportbike",  "race": False},
+    {"day": "friday",   "time_start": "17:15", "time_end": "17:45", "session": "PreP",     "cls": "Superbike",  "race": False},
+    # ── SATURDAY ──────────────────────────────────────────────
+    {"day": "saturday", "time_start": "08:15", "time_end": "08:45", "session": "FP3",      "cls": "Supersport", "race": False},
+    {"day": "saturday", "time_start": "08:50", "time_end": "09:20", "session": "FP3",      "cls": "Superbike",  "race": False},
+    {"day": "saturday", "time_start": "09:25", "time_end": "09:45", "session": "FP3",      "cls": "Sportbike",  "race": False},
+    {"day": "saturday", "time_start": "11:00", "time_end": "11:25", "session": "Qualifying","cls": "Supersport","race": False},
+    {"day": "saturday", "time_start": "11:30", "time_end": "11:55", "session": "Qualifying","cls": "Sportbike", "race": False},
+    {"day": "saturday", "time_start": "14:05", "time_end": "14:25", "session": "Race 1",   "cls": "Supersport", "race": True},
+    {"day": "saturday", "time_start": "15:30", "time_end": "15:50", "session": "Race 1",   "cls": "Sportbike",  "race": True},
+    # ── SUNDAY ────────────────────────────────────────────────
+    {"day": "sunday",   "time_start": "08:30", "time_end": "09:00", "session": "Superpole","cls": "Superbike",  "race": False},
+    {"day": "sunday",   "time_start": "09:10", "time_end": "09:25", "session": "Warm-up",  "cls": "Supersport", "race": False},
+    {"day": "sunday",   "time_start": "09:30", "time_end": "09:45", "session": "Warm-up",  "cls": "Sportbike",  "race": False},
+    {"day": "sunday",   "time_start": "09:50", "time_end": "10:05", "session": "Warm-up",  "cls": "Superbike",  "race": False},
+    {"day": "sunday",   "time_start": "10:50", "time_end": "11:15", "session": "Race 1",   "cls": "Superbike",  "race": True},
+    {"day": "sunday",   "time_start": "12:00", "time_end": "12:20", "session": "Race 2",   "cls": "Supersport", "race": True},
+    {"day": "sunday",   "time_start": "13:30", "time_end": "13:50", "session": "Race 2",   "cls": "Sportbike",  "race": True},
+    {"day": "sunday",   "time_start": "15:00", "time_end": "15:25", "session": "Race 2",   "cls": "Superbike",  "race": True},
+]
+
 # Known track GPS coordinates (lat, lon) for weather lookup
 TRACK_COORDINATES: dict[str, tuple[float, float]] = {
     "sachsenring":  (50.7914, 12.6872),

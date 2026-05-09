@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     DOMAIN,
+    SCHEDULE_FALLBACK,
     TRACK_COORDINATES,
     TRACK_DATA_FALLBACK,
     UPDATE_INTERVAL_NORMAL_HOURS,
@@ -36,6 +37,7 @@ class EuroMotoData:
     standings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     grid: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     track_weather: dict[str, Any] = field(default_factory=dict)
+    schedule: list[dict[str, Any]] = field(default_factory=list)
     season: int = 0
 
 
@@ -169,11 +171,23 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             else UPDATE_INTERVAL_NORMAL_HOURS * 60
         )
 
+        # Schedule for the current/next race weekend
+        schedule: list[dict[str, Any]] = []
+        current_event = _next_event(calendar)
+        if current_event:
+            try:
+                schedule = await scraper.fetch_schedule(current_event)
+            except Exception as exc:
+                _LOGGER.debug("Schedule fetch failed: %s", exc)
+        if not schedule:
+            schedule = list(SCHEDULE_FALLBACK)
+
         return EuroMotoData(
             calendar=calendar,
             standings=standings,
             grid=grid,
             track_weather=track_weather,
+            schedule=schedule,
             season=year,
         )
 

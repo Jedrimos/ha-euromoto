@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
@@ -59,6 +59,7 @@ async def async_setup_entry(
         NextEventSensor(coordinator),
         SeasonCalendarSensor(coordinator),
         RaceWeekendSensor(coordinator),
+        WeekendScheduleSensor(coordinator),
     ]
     for cls in enabled_classes:
         entities.append(StandingsSensor(coordinator, cls))
@@ -451,4 +452,104 @@ class RaceWeekendSensor(_EuroMotoSensor):
             "day": day_names.get(today.weekday(), ""),
             "livetiming_url": LIVETIMING_URL,
             "livestream_url": LIVESTREAM_URL,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Weekend Schedule Sensor
+# ---------------------------------------------------------------------------
+
+_DAY_MAP = {
+    "friday": 4, "saturday": 5, "sunday": 6,
+}
+_DAY_DE = {
+    "friday": "Freitag", "saturday": "Samstag", "sunday": "Sonntag",
+}
+_SESSION_ICON = {
+    "FP1": "🔵", "FP2": "🔵", "FP3": "🔵",
+    "Training": "🔵",
+    "PreP": "🟡",
+    "Qualifying": "🟡", "Superpole": "🟡",
+    "Warm-up": "🟠",
+    "Race 1": "🏁", "Race 2": "🏁",
+}
+
+
+def _sessions_for_day(schedule: list[dict], day: str) -> list[dict]:
+    return [s for s in schedule if s.get("day") == day]
+
+
+def _next_session(schedule: list[dict], event_date_start: date) -> dict | None:
+    """Return the first session that hasn't finished yet relative to now."""
+    now = datetime.now()
+    for day_key, weekday_offset in _DAY_MAP.items():
+        session_date = event_date_start + timedelta(
+            days=(weekday_offset - event_date_start.weekday()) % 7
+        )
+        for s in _sessions_for_day(schedule, day_key):
+            try:
+                h, m = map(int, s["time_end"].split(":")) if s.get("time_end") else map(int, s["time_start"].split(":"))
+                session_end = datetime.combine(session_date, time(h, m))
+                if session_end > now:
+                    return {**s, "date": session_date.isoformat()}
+            except (ValueError, AttributeError):
+                continue
+    return None
+
+
+class WeekendScheduleSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:calendar-clock"
+    _attr_name = "Weekend Schedule"
+
+    def __init__(self, coordinator: EuroMotoCoordinator) -> None:
+        super().__init__(coordinator, "weekend_schedule")
+
+    def _event_start(self) -> date | None:
+        today = date.today()
+        for ev in self.coordinator.data.calendar:
+            if ev.date_end.date() >= today:
+                return ev.date_start.date()
+        return None
+
+    @property
+    def native_value(self) -> str | None:
+        schedule = self.coordinator.data.schedule
+        start = self._event_start()
+        if not schedule or not start:
+            return None
+        nxt = _next_session(schedule, start)
+        if not nxt:
+            return "Kein weiteres Event"
+        icon = _SESSION_ICON.get(nxt.get("session", ""), "📋")
+        day_de = _DAY_DE.get(nxt.get("day", ""), nxt.get("day", ""))
+        return f"{icon} {nxt.get('session')} {nxt.get('cls')} – {day_de} {nxt.get('time_start')}"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        schedule = self.coordinator.data.schedule
+        start = self._event_start()
+        if not schedule:
+            return {}
+
+        def _format(s: dict, event_start: date | None) -> dict:
+            icon = _SESSION_ICON.get(s.get("session", ""), "📋")
+            day_de = _DAY_DE.get(s.get("day", ""), s.get("day", ""))
+            time_range = s["time_start"]
+            if s.get("time_end"):
+                time_range += f"–{s['time_end']}"
+            return {
+                "day": day_de,
+                "time": time_range,
+                "session": s.get("session"),
+                "class": s.get("cls"),
+                "icon": icon,
+                "is_race": s.get("race", False),
+            }
+
+        return {
+            "next_session": _next_session(schedule, start) if start else None,
+            "friday": [_format(s, start) for s in _sessions_for_day(schedule, "friday")],
+            "saturday": [_format(s, start) for s in _sessions_for_day(schedule, "saturday")],
+            "sunday": [_format(s, start) for s in _sessions_for_day(schedule, "sunday")],
+            "all_sessions": [_format(s, start) for s in schedule],
         }

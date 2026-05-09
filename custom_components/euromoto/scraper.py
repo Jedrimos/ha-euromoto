@@ -192,6 +192,101 @@ class EuroMotoScraper:
             _LOGGER.warning("Error parsing track details for %s: %s", slug, exc)
             return {}
 
+    async def fetch_schedule(self, event: TrackEvent) -> list[dict[str, Any]]:
+        """Try to scrape the race weekend timetable from the event page."""
+        if not event.track_url:
+            return []
+        html = await self._get(event.track_url)
+        if not html:
+            return []
+        try:
+            return _parse_schedule(html)
+        except Exception as exc:
+            _LOGGER.debug("Schedule parse failed for %s: %s", event.name, exc)
+            return []
+
+
+_TIME_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")
+_SESSION_KEYWORDS = {
+    "fp1": "FP1", "fp2": "FP2", "fp3": "FP3",
+    "freies training": "FP1",
+    "training": "Training",
+    "qualifying": "Qualifying",
+    "superpole": "Superpole",
+    "prep": "PreP",
+    "warm-up": "Warm-up",
+    "warmup": "Warm-up",
+    "rennen 1": "Race 1", "race 1": "Race 1",
+    "rennen 2": "Race 2", "race 2": "Race 2",
+}
+_CLASS_KEYWORDS = {
+    "superbike": "Superbike",
+    "supersport": "Supersport",
+    "sportbike": "Sportbike",
+}
+_DAY_KEYWORDS = {
+    "freitag": "friday", "friday": "friday",
+    "samstag": "saturday", "saturday": "saturday",
+    "sonntag": "sunday", "sunday": "sunday",
+}
+
+
+def _parse_schedule(html: str) -> list[dict[str, Any]]:
+    """Extract session timetable from an event page HTML.
+
+    Looks for time patterns (HH:MM) near session-type and class keywords.
+    Returns [] if nothing useful is found – caller falls back to hardcoded schedule.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    sessions: list[dict[str, Any]] = []
+    current_day = "friday"
+
+    for el in soup.find_all(["tr", "li", "div", "p", "td"]):
+        text = el.get_text(" ", strip=True).lower()
+
+        # Detect day heading
+        for kw, day in _DAY_KEYWORDS.items():
+            if kw in text and len(text) < 40:
+                current_day = day
+                break
+
+        # Find time(s) in this element
+        times = _TIME_RE.findall(text)
+        if not times:
+            continue
+
+        time_start = f"{int(times[0][0]):02d}:{times[0][1]}"
+        time_end = f"{int(times[1][0]):02d}:{times[1][1]}" if len(times) >= 2 else ""
+
+        # Detect session type
+        session = ""
+        for kw, label in _SESSION_KEYWORDS.items():
+            if kw in text:
+                session = label
+                break
+        if not session:
+            continue
+
+        # Detect class
+        cls = "Support"
+        for kw, label in _CLASS_KEYWORDS.items():
+            if kw in text:
+                cls = label
+                break
+
+        is_race = session.startswith("Race")
+        sessions.append({
+            "day": current_day,
+            "time_start": time_start,
+            "time_end": time_end,
+            "session": session,
+            "cls": cls,
+            "race": is_race,
+        })
+
+    # Need at least a handful of sessions to be meaningful
+    return sessions if len(sessions) >= 4 else []
+
 
 def _make_event(date_raw: str, name_raw: str, track_url: str | None) -> TrackEvent | None:
     """Build a TrackEvent from raw date and name strings, or None if date unparseable."""
