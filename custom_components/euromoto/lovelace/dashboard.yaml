@@ -326,7 +326,10 @@ views:
           {% if name not in ('unknown','unavailable','–','') %}
           ## {{ state_attr(s,'flag') }} {{ name }} — #{{ state_attr(s,'number') }}
 
-          🏆 **P{{ state_attr(s,'position') }}** · 🏍️ {{ state_attr(s,'bike') }} · 🌍 {{ state_attr(s,'nation') }} · 🏅 **{{ state_attr(s,'points') }} Pkt** · {{ state_attr(s,'class') }}
+          {%- set pos = state_attr(s,'position') -%}
+          {%- set src = state_attr(s,'position_source') -%}
+          {%- set pts = state_attr(s,'points') -%}
+          🏆 **P{{ pos if pos else '?' }}**{% if src %} *({{ src }})*{% endif %} · 🏍️ {{ state_attr(s,'bike') }} · 🌍 {{ state_attr(s,'nation') }} · {% if pts %}🏅 **{{ pts }} Pkt** · {% endif %}{{ state_attr(s,'class') }}
           {% else %}
           ## Fahrer #94
 
