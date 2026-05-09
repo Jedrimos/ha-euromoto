@@ -21,7 +21,7 @@ _YAML_PATH = pathlib.Path(__file__).parent / "lovelace" / "dashboard.yaml"
 def _load_config() -> dict:
     raw = _YAML_PATH.read_text(encoding="utf-8")
     # Strip the comment header before parsing
-    lines = [l for l in raw.splitlines() if not l.startswith("#")]
+    lines = [ln for ln in raw.splitlines() if not ln.startswith("#")]
     return yaml.safe_load("\n".join(lines))
 
 

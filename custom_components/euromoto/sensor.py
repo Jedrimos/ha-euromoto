@@ -15,7 +15,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_CLASSES,
     CONF_FAVORITE_RIDERS,
-    CONF_LIVE_TENANT_ID,
     CLASS_SUPERBIKE,
     CLASS_SUPERSPORT,
     CLASS_SPORTBIKE,
