@@ -15,6 +15,7 @@ from .const import (
     CALENDAR_FALLBACK_2026,
     CALENDAR_URL,
     COUNTRY_HINTS,
+    RIDERS_CLASS_URLS,
     RIDERS_URL_CANDIDATES,
     SCRAPER_HEADERS,
     TRACK_URL_TEMPLATE,
@@ -286,6 +287,12 @@ class EuroMotoScraper:
             ) as resp:
                 resp.raise_for_status()
                 return await resp.text()
+        except aiohttp.ClientResponseError as exc:
+            if exc.status == 404:
+                _LOGGER.debug("Not found (404): %s", url)
+            else:
+                _LOGGER.warning("Failed to fetch %s: %s", url, exc)
+            return None
         except Exception as exc:
             _LOGGER.warning("Failed to fetch %s: %s", url, exc)
             return None
@@ -328,16 +335,39 @@ class EuroMotoScraper:
             return []
 
     async def fetch_rider_entries(self) -> list[dict[str, Any]]:
-        """Try each candidate URL for rider/team data; return [] on total failure."""
+        """Fetch rider/team data from per-class pages in parallel, fall back to generic URLs."""
+        # --- Try class-specific pages first (parallel) ---
+        import asyncio as _asyncio
+        results: list[dict[str, Any]] = []
+        tasks = {cls: _asyncio.create_task(self._get(url)) for cls, url in RIDERS_CLASS_URLS.items()}
+        for cls, task in tasks.items():
+            html = await task
+            if not html:
+                continue
+            try:
+                entries = _parse_rider_entries(html)
+                for e in entries:
+                    e["class"] = cls  # enforce class from URL
+                results.extend(entries)
+                _LOGGER.debug("Fetched %d entries for %s", len(entries), cls)
+            except Exception as exc:
+                _LOGGER.debug("Rider parse failed for %s: %s", cls, exc)
+
+        if results:
+            return results
+
+        # --- Fallback: generic single-page candidates ---
         for url in RIDERS_URL_CANDIDATES:
+            if url in RIDERS_CLASS_URLS.values():
+                continue  # already tried above
             html = await self._get(url)
             if not html:
                 continue
             try:
-                result = _parse_rider_entries(html)
-                if result:
-                    _LOGGER.debug("Fetched %d rider entries from %s", len(result), url)
-                    return result
+                entries = _parse_rider_entries(html)
+                if entries:
+                    _LOGGER.debug("Fetched %d rider entries from %s", len(entries), url)
+                    return entries
             except Exception as exc:
                 _LOGGER.debug("Rider parse failed for %s: %s", url, exc)
         return []

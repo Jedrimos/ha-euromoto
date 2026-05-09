@@ -17,13 +17,23 @@ BASE_URL = "https://euromoto.racing"
 CALENDAR_URL = f"{BASE_URL}/termine-strecken/"
 TRACK_URL_TEMPLATE = f"{BASE_URL}/strecke/{{slug}}/"
 
-# Candidate URLs for rider/team entries page (tried in order)
+# Per-class rider/team pages (tried first); generic fallbacks follow
 RIDERS_URL_CANDIDATES = [
+    f"{BASE_URL}/klasse/superbike/",
+    f"{BASE_URL}/klasse/supersport/",
+    f"{BASE_URL}/klasse/sportbike/",
     f"{BASE_URL}/klassen-fahrer/",
     f"{BASE_URL}/fahrer-teams/",
     f"{BASE_URL}/fahrer/",
     f"{BASE_URL}/teams-fahrer/",
 ]
+
+# Class-specific URLs keyed by class name (fetched in parallel for full roster)
+RIDERS_CLASS_URLS: dict[str, str] = {
+    "Superbike":  f"{BASE_URL}/klasse/superbike/",
+    "Supersport": f"{BASE_URL}/klasse/supersport/",
+    "Sportbike":  f"{BASE_URL}/klasse/sportbike/",
+}
 
 PDF_BASE_URL = "https://results.bike-promotion.com/Results/Championship%20scores"
 PDF_URL_TEMPLATE = (
