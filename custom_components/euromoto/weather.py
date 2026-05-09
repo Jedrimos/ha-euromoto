@@ -35,6 +35,7 @@ class TrackWeatherEntity(CoordinatorEntity[EuroMotoCoordinator], WeatherEntity):
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator)
+        self.entity_id = "weather.euromoto_track_weather"
 
     @property
     def _wx(self) -> dict:

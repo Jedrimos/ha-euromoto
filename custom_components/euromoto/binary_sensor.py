@@ -108,6 +108,7 @@ class RaceWeekendBinarySensor(_EuroMotoBinarySensor):
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "bs_race_weekend")
+        self.entity_id = "binary_sensor.euromoto_race_weekend"
 
     @property
     def is_on(self) -> bool:
@@ -134,6 +135,7 @@ class SessionActiveBinarySensor(_EuroMotoBinarySensor):
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "bs_session_active")
+        self.entity_id = "binary_sensor.euromoto_session_active"
 
     @property
     def is_on(self) -> bool:
@@ -161,6 +163,7 @@ class RaceActiveBinarySensor(_EuroMotoBinarySensor):
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "bs_race_active")
+        self.entity_id = "binary_sensor.euromoto_race_active"
 
     @property
     def is_on(self) -> bool:

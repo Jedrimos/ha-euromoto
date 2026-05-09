@@ -107,6 +107,7 @@ class _EuroMotoSensor(CoordinatorEntity[EuroMotoCoordinator], SensorEntity):
     def __init__(self, coordinator: EuroMotoCoordinator, unique_suffix: str) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"euromoto_{unique_suffix}"
+        self.entity_id = f"sensor.euromoto_{unique_suffix}"
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +381,7 @@ class FavoriteRiderSensor(_EuroMotoSensor):
         self._rider_number = rider_number
         self._enabled_classes = enabled_classes
         self._attr_name = f"Rider #{rider_number}"
+        self.entity_id = f"sensor.euromoto_rider_{rider_number}"
 
     def _find(self) -> tuple[str, dict[str, Any]] | None:
         for cls in self._enabled_classes:

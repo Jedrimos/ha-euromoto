@@ -59,6 +59,7 @@ class EuroMotoCalendar(CoordinatorEntity[EuroMotoCoordinator], CalendarEntity):
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = "euromoto_race_calendar"
+        self.entity_id = "calendar.euromoto_race_calendar"
 
     @property
     def event(self) -> CalendarEvent | None:
@@ -85,10 +86,8 @@ class EuroMotoCalendar(CoordinatorEntity[EuroMotoCoordinator], CalendarEntity):
                 ev.date_start.year, ev.date_start.month, ev.date_start.day,
                 tzinfo=timezone.utc,
             )
-            ev_end = datetime(
-                ev.date_end.year, ev.date_end.month, ev.date_end.day + 1,
-                tzinfo=timezone.utc,
-            )
+            _end_date = ev.date_end.date() + timedelta(days=1)
+            ev_end = datetime(_end_date.year, _end_date.month, _end_date.day, tzinfo=timezone.utc)
             if ev_end >= start_date and ev_start <= end_date:
                 result.append(_to_calendar_event(ev, i + 1))
         return result
