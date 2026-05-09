@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_LIVE_TENANT_ID,
     DOMAIN,
     SCHEDULE_FALLBACK,
     TRACK_COORDINATES,
@@ -19,6 +20,7 @@ from .const import (
     UPDATE_INTERVAL_NORMAL_HOURS,
     UPDATE_INTERVAL_RACE_MINUTES,
 )
+from .livetiming import EuroMotoLiveTiming, LiveTimingState
 from .pdf_parser import EuroMotoPdfParser
 from .scraper import EuroMotoScraper, TrackEvent
 from .weather_client import fetch_track_weather
@@ -40,6 +42,7 @@ class EuroMotoData:
     schedule: list[dict[str, Any]] = field(default_factory=list)
     season: int = 0
     rider_entries: list[dict[str, Any]] = field(default_factory=list)
+    live_timing: LiveTimingState | None = None
 
 
 def _is_race_weekend(calendar: list[TrackEvent]) -> bool:
@@ -87,12 +90,15 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         hass: HomeAssistant,
         enabled_classes: list[str],
         favorite_riders: list[int] | None = None,
+        live_tenant_id: str = "c1",
     ) -> None:
         self._enabled_classes = enabled_classes
         self._favorite_riders = favorite_riders or []
+        self._live_tenant_id = live_tenant_id
         self._session: aiohttp.ClientSession | None = None
         self._track_details_cache: dict[str, dict[str, Any]] = {}
         self._rider_entries_cache: list[dict[str, Any]] | None = None
+        self._live_timing: EuroMotoLiveTiming | None = None
         super().__init__(
             hass,
             _LOGGER,
@@ -179,11 +185,24 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                 except Exception as exc:
                     _LOGGER.debug("Weather fetch failed for %s: %s", next_ev.name, exc)
 
+        is_race_wknd = _is_race_weekend(calendar)
         self.update_interval = timedelta(
             minutes=UPDATE_INTERVAL_RACE_MINUTES
-            if _is_race_weekend(calendar)
+            if is_race_wknd
             else UPDATE_INTERVAL_NORMAL_HOURS * 60
         )
+
+        # Start/stop live timing WebSocket based on race weekend status
+        if is_race_wknd:
+            if self._live_timing is None:
+                self._live_timing = EuroMotoLiveTiming(
+                    self._get_session(), self._live_tenant_id
+                )
+                self._live_timing.add_update_callback(self._on_live_update)
+            await self._live_timing.async_start()
+        else:
+            if self._live_timing is not None:
+                await self._live_timing.async_stop()
 
         # Schedule for the current/next race weekend
         schedule: list[dict[str, Any]] = []
@@ -204,9 +223,18 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             schedule=schedule,
             season=year,
             rider_entries=rider_entries,
+            live_timing=self._live_timing.state if self._live_timing else None,
         )
 
+    def _on_live_update(self, state: LiveTimingState) -> None:
+        """Called by EuroMotoLiveTiming whenever new data arrives – push to HA."""
+        if self.data:
+            self.data.live_timing = state
+        self.async_set_updated_data(self.data)
+
     async def async_shutdown(self) -> None:
+        if self._live_timing:
+            await self._live_timing.async_stop()
         if self._session and not self._session.closed:
             await self._session.close()
         await super().async_shutdown()

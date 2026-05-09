@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.start import async_at_started
 
-from .const import DOMAIN, CONF_CLASSES, CONF_FAVORITE_RIDERS, CLASS_SUPERBIKE, CLASS_SUPERSPORT
+from .const import DOMAIN, CONF_CLASSES, CONF_FAVORITE_RIDERS, CONF_LIVE_TENANT_ID, CLASS_SUPERBIKE, CLASS_SUPERSPORT
 from .coordinator import EuroMotoCoordinator
 from .dashboard import async_register_dashboard, async_remove_dashboard
 
@@ -78,7 +78,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     favorite_riders: list[int] = entry.options.get(
         CONF_FAVORITE_RIDERS, entry.data.get(CONF_FAVORITE_RIDERS, [])
     )
-    coordinator = EuroMotoCoordinator(hass, enabled_classes, favorite_riders)
+    live_tenant_id: str = entry.options.get(
+        CONF_LIVE_TENANT_ID, entry.data.get(CONF_LIVE_TENANT_ID, "c1")
+    )
+    coordinator = EuroMotoCoordinator(hass, enabled_classes, favorite_riders, live_tenant_id)
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator

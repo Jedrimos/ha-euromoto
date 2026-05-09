@@ -6,6 +6,7 @@ from typing import Any
 DOMAIN = "euromoto"
 CONF_CLASSES = "classes"
 CONF_FAVORITE_RIDERS = "favorite_rider_numbers"  # list of ints
+CONF_LIVE_TENANT_ID = "live_tenant_id"           # SignalR _tk param for live timing
 
 CLASS_SUPERBIKE = "Superbike"
 CLASS_SUPERSPORT = "Supersport"

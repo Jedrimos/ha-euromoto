@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_CLASSES,
     CONF_FAVORITE_RIDERS,
+    CONF_LIVE_TENANT_ID,
     CLASS_SUPERBIKE,
     CLASS_SUPERSPORT,
     CLASS_SPORTBIKE,
@@ -27,6 +28,7 @@ from .const import (
     TICKETS_URL,
 )
 from .coordinator import EuroMotoCoordinator, EuroMotoData
+from .livetiming import us_to_laptime
 from .scraper import TrackEvent
 
 _LOGGER = logging.getLogger(__name__)
@@ -78,6 +80,10 @@ async def async_setup_entry(
 
     for number in favorite_riders:
         entities.append(FavoriteRiderSensor(coordinator, number, enabled_classes))
+
+    entities.append(LiveFlagSensor(coordinator))
+    entities.append(LiveSessionSensor(coordinator))
+    entities.append(LiveLeaderboardSensor(coordinator))
 
     async_add_entities(entities, update_before_add=True)
 
@@ -624,4 +630,113 @@ class WeekendScheduleSensor(_EuroMotoSensor):
             "saturday": [_format(s) for s in _sessions_for_day(schedule, "saturday")],
             "sunday": [_format(s) for s in _sessions_for_day(schedule, "sunday")],
             "all_sessions": [_format(s) for s in schedule],
+        }
+
+
+# ---------------------------------------------------------------------------
+# Live Timing Sensors
+# ---------------------------------------------------------------------------
+
+_FLAG_ICON = {
+    "green": "🟢", "yellow": "🟡", "red": "🔴",
+    "safety_car": "🚗", "vsc": "🐢", "chequered": "🏁",
+    "warmup": "🟠", "unknown": "⚫",
+}
+
+
+class LiveFlagSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:flag"
+    _attr_name = "EuroMoto Live Flag"
+
+    def __init__(self, coordinator: EuroMotoCoordinator) -> None:
+        super().__init__(coordinator, "live_flag")
+
+    @property
+    def native_value(self) -> str:
+        lt = self.coordinator.data.live_timing
+        if not lt or not lt.connected:
+            return "offline"
+        return lt.session.flag
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        lt = self.coordinator.data.live_timing
+        if not lt:
+            return {"connected": False}
+        icon = _FLAG_ICON.get(lt.session.flag, "⚫")
+        return {
+            "connected": lt.connected,
+            "flag_icon": icon,
+            "session": lt.session.name,
+        }
+
+
+class LiveSessionSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:timer-play"
+    _attr_name = "EuroMoto Live Session"
+
+    def __init__(self, coordinator: EuroMotoCoordinator) -> None:
+        super().__init__(coordinator, "live_session")
+
+    @property
+    def native_value(self) -> str | None:
+        lt = self.coordinator.data.live_timing
+        if not lt or not lt.connected or not lt.session.name:
+            return None
+        return lt.session.name
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        lt = self.coordinator.data.live_timing
+        if not lt or not lt.connected:
+            return {}
+        s = lt.session
+        elapsed_s = s.elapsed_us // 1_000_000
+        elapsed_str = f"{elapsed_s // 60}:{elapsed_s % 60:02d}" if elapsed_s else ""
+        return {
+            "flag": s.flag,
+            "flag_icon": _FLAG_ICON.get(s.flag, "⚫"),
+            "elapsed": elapsed_str,
+            "riders_on_track": sum(1 for r in lt.rows if r.status == "racing"),
+        }
+
+
+class LiveLeaderboardSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:format-list-numbered"
+    _attr_name = "EuroMoto Live Leaderboard"
+
+    def __init__(self, coordinator: EuroMotoCoordinator) -> None:
+        super().__init__(coordinator, "live_leaderboard")
+
+    @property
+    def native_value(self) -> str | None:
+        lt = self.coordinator.data.live_timing
+        if not lt or not lt.rows:
+            return None
+        leader = lt.rows[0]
+        return f"P1: #{leader.number} {leader.name}" if leader.name else f"P1: #{leader.number}"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        lt = self.coordinator.data.live_timing
+        if not lt:
+            return {"connected": False}
+        return {
+            "connected": lt.connected,
+            "session": lt.session.name,
+            "flag": lt.session.flag,
+            "flag_icon": _FLAG_ICON.get(lt.session.flag, "⚫"),
+            "leaderboard": [
+                {
+                    "pos": r.position,
+                    "number": r.number,
+                    "name": r.name,
+                    "class": r.cls,
+                    "gap": r.gap,
+                    "last_lap": us_to_laptime(r.last_lap_us),
+                    "best_lap": us_to_laptime(r.best_lap_us),
+                    "status": r.status,
+                }
+                for r in lt.rows[:20]
+            ],
         }
