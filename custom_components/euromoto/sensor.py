@@ -311,9 +311,9 @@ class DriverPositionSensor(_EuroMotoSensor):
         return None
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str:
         e = self._entry()
-        return e.get("name") if e else None
+        return e.get("name") if e else "–"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -330,10 +330,6 @@ class DriverPositionSensor(_EuroMotoSensor):
             "points": e.get("points"),
             "class": self._cls,
         }
-
-    @property
-    def available(self) -> bool:
-        return self._entry() is not None
 
 
 # ---------------------------------------------------------------------------
@@ -356,17 +352,13 @@ class StartingGridSensor(_EuroMotoSensor):
         return self.coordinator.data.grid.get(self._cls, [])
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str:
         g = self._grid
-        return g[0].get("name") if g else None
+        return g[0].get("name") if g else "–"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"class": self._cls, "season": self.coordinator.data.season, "grid": self._grid}
-
-    @property
-    def available(self) -> bool:
-        return len(self._grid) > 0
 
 
 # ---------------------------------------------------------------------------

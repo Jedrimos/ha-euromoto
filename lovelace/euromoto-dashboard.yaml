@@ -483,30 +483,20 @@ views:
             | 🏅 Punkte | **{{ state_attr(s, 'points') }}** |
             | 📂 Klasse | {{ state_attr(s, 'class') }} |
 
-      # Top 10 als entities (schnell überblicken)
-      - type: entities
-        title: Superbike Top 10
-        entities:
-          - entity: sensor.euromoto_sbk_p1
-            name: "🥇 P1"
-          - entity: sensor.euromoto_sbk_p2
-            name: "🥈 P2"
-          - entity: sensor.euromoto_sbk_p3
-            name: "🥉 P3"
-          - entity: sensor.euromoto_sbk_p4
-            name: "   P4"
-          - entity: sensor.euromoto_sbk_p5
-            name: "   P5"
-          - entity: sensor.euromoto_sbk_p6
-            name: "   P6"
-          - entity: sensor.euromoto_sbk_p7
-            name: "   P7"
-          - entity: sensor.euromoto_sbk_p8
-            name: "   P8"
-          - entity: sensor.euromoto_sbk_p9
-            name: "   P9"
-          - entity: sensor.euromoto_sbk_p10
-            name: "   P10"
+      # Top 10 aus Standings-Sensor (kein Fehler wenn Daten fehlen)
+      - type: markdown
+        content: >
+          ## 🏆 Superbike Top 10
+          {% set st = state_attr('sensor.euromoto_sbk_standings', 'standings') or [] %}
+          {% if st %}
+          | Pos | # | Fahrer | Nation | Bike | Punkte |
+          |:---:|:---:|---|:---:|---|---:|
+          {% for r in st[:10] %}
+          | **{{ r.pos }}** | {{ r.number }} | {{ r.flag }} {{ r.name }} | {{ r.flag }} | {{ r.bike }} | **{{ r.points }}** |
+          {% endfor %}
+          {% else %}
+          *Keine Daten – Standings werden nach dem 1. Rennen veröffentlicht.*
+          {% endif %}
 
   # ============================================================
   # EINSTELLUNGEN
