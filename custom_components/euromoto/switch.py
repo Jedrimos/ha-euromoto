@@ -29,8 +29,7 @@ class NoSpoilerSwitch(SwitchEntity, RestoreEntity):
     Combine with conditional cards in Lovelace to suppress standings/grid.
     """
 
-    _attr_has_entity_name = True
-    _attr_name = "No-Spoiler Modus"
+    _attr_name = "EuroMoto No-Spoiler Modus"
     _attr_icon = "mdi:eye-off"
     _attr_should_poll = False
     _attr_device_info = _DEVICE_INFO

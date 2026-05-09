@@ -51,8 +51,7 @@ def _to_calendar_event(event: TrackEvent, round_num: int) -> CalendarEvent:
 
 
 class EuroMotoCalendar(CoordinatorEntity[EuroMotoCoordinator], CalendarEntity):
-    _attr_has_entity_name = True
-    _attr_name = "Race Calendar"
+    _attr_name = "EuroMoto Race Calendar"
     _attr_icon = "mdi:calendar-star"
     _attr_device_info = _DEVICE_INFO
 
