@@ -322,17 +322,43 @@ class EuroMotoScraper:
             return {}
 
     async def fetch_schedule(self, event: TrackEvent) -> list[dict[str, Any]]:
-        """Try to scrape the race weekend timetable from the event page."""
-        if not event.track_url:
-            return []
-        html = await self._get(event.track_url)
-        if not html:
-            return []
-        try:
-            return _parse_schedule(html)
-        except Exception as exc:
-            _LOGGER.debug("Schedule parse failed for %s: %s", event.name, exc)
-            return []
+        """Try to scrape the race weekend timetable from multiple URL candidates."""
+        slug = None
+        if event.track_url:
+            slug = event.track_url.rstrip("/").rsplit("/", 1)[-1]
+
+        candidates: list[str] = []
+        if slug:
+            # Event-specific page first (most likely to have the timetable)
+            candidates += [
+                f"{BASE_URL}/veranstaltung/{slug}/",
+                f"{BASE_URL}/event/{slug}/",
+                f"{BASE_URL}/rennen/{slug}/",
+            ]
+        # Homepage often shows current event schedule during race weekend
+        candidates.append(BASE_URL + "/")
+        if slug:
+            # Also try the programm/zeitplan sub-page under the track URL
+            candidates += [
+                f"{BASE_URL}/strecke/{slug}/programm/",
+                f"{BASE_URL}/strecke/{slug}/zeitplan/",
+                f"{BASE_URL}/strecke/{slug}/",  # original track page (last)
+            ]
+        elif event.track_url:
+            candidates.append(event.track_url)
+
+        for url in candidates:
+            html = await self._get(url)
+            if not html:
+                continue
+            try:
+                sessions = _parse_schedule(html)
+                if sessions:
+                    _LOGGER.debug("Schedule found at %s (%d sessions)", url, len(sessions))
+                    return sessions
+            except Exception as exc:
+                _LOGGER.debug("Schedule parse failed for %s at %s: %s", event.name, url, exc)
+        return []
 
     async def fetch_rider_entries(self) -> list[dict[str, Any]]:
         """Fetch rider/team data from per-class pages in parallel, fall back to generic URLs."""
