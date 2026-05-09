@@ -35,7 +35,16 @@ RIDERS_CLASS_URLS: dict[str, str] = {
     "Sportbike":  f"{BASE_URL}/klasse/sportbike/",
 }
 
+RESULTS_BASE_URL = "https://results.bike-promotion.com"
 PDF_BASE_URL = "https://results.bike-promotion.com/Results/Championship%20scores"
+
+# MyLaps event IDs for each IDM round (from results.bike-promotion.com/?mylaps=type,event,eventid,X)
+# Used to fetch live session schedule from the results server.
+# Update these IDs each season by checking the results page.
+MYLAPS_EVENT_IDS: dict[str, int] = {
+    "sachsenring":  3496488,
+    # Other 2026 IDs TBD – will be discovered automatically via the results index
+}
 PDF_URL_TEMPLATE = (
     "{base}/{year}/01%20IDM/IDM%20Punktest%C3%A4nde%20IDM_{cls}.pdf"
 )

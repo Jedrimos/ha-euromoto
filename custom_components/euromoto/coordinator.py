@@ -211,17 +211,24 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             round_num = next(
                 (i + 1 for i, e in enumerate(calendar) if e is current_event), 1
             )
+            slug = _track_slug(current_event) or ""
             try:
-                # 1. Try PDF from results.bike-promotion.com
-                pdf_lines = await pdf_parser.fetch_schedule(round_num, year)
-                if pdf_lines:
-                    from .scraper import _parse_schedule as _ps
-                    joined = "\n".join(f"<p>{ln}</p>" for ln in pdf_lines)
-                    schedule = _ps(joined)
+                # 1. MyLaps results server (structured data, most reliable)
+                schedule = await scraper.fetch_schedule_mylaps(slug)
             except Exception as exc:
-                _LOGGER.debug("PDF schedule fetch failed: %s", exc)
+                _LOGGER.debug("MyLaps schedule fetch failed: %s", exc)
             if not schedule:
-                # 2. Try HTML scraping (incl. PDF links embedded on track pages)
+                try:
+                    # 2. PDF from results.bike-promotion.com
+                    pdf_lines = await pdf_parser.fetch_schedule(round_num, year)
+                    if pdf_lines:
+                        from .scraper import _parse_schedule as _ps
+                        joined = "\n".join(f"<p>{ln}</p>" for ln in pdf_lines)
+                        schedule = _ps(joined)
+                except Exception as exc:
+                    _LOGGER.debug("PDF schedule fetch failed: %s", exc)
+            if not schedule:
+                # 3. HTML scraping of euromoto.racing (incl. PDF links on track pages)
                 try:
                     schedule = await scraper.fetch_schedule(current_event)
                 except Exception as exc:
