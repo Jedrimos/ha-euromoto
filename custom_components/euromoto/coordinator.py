@@ -39,6 +39,7 @@ class EuroMotoData:
     track_weather: dict[str, Any] = field(default_factory=dict)
     schedule: list[dict[str, Any]] = field(default_factory=list)
     season: int = 0
+    rider_entries: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _is_race_weekend(calendar: list[TrackEvent]) -> bool:
@@ -91,6 +92,7 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         self._favorite_riders = favorite_riders or []
         self._session: aiohttp.ClientSession | None = None
         self._track_details_cache: dict[str, dict[str, Any]] = {}
+        self._rider_entries_cache: list[dict[str, Any]] | None = None
         super().__init__(
             hass,
             _LOGGER,
@@ -153,6 +155,15 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         standings = {cls: task.result() for cls, task in standings_tasks.items()}
         grid = {cls: task.result() for cls, task in grid_tasks.items()}
 
+        # Rider entries (names, teams, bikes from website) – cached to reduce HTTP load
+        if self._rider_entries_cache is None:
+            try:
+                self._rider_entries_cache = await scraper.fetch_rider_entries()
+            except Exception as exc:
+                _LOGGER.debug("Rider entries fetch failed: %s", exc)
+                self._rider_entries_cache = []
+        rider_entries = self._rider_entries_cache
+
         # Weather for the next event's track
         track_weather: dict[str, Any] = {}
         next_ev = _next_event(calendar)
@@ -192,6 +203,7 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             track_weather=track_weather,
             schedule=schedule,
             season=year,
+            rider_entries=rider_entries,
         )
 
     async def async_shutdown(self) -> None:

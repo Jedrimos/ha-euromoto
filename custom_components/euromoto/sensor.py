@@ -270,6 +270,11 @@ class AllRidersSensor(_EuroMotoSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        team_lookup: dict[int, str] = {
+            e["number"]: e.get("team", "")
+            for e in self.coordinator.data.rider_entries
+            if e.get("number") and e.get("class") == self._cls
+        }
         riders = [
             {
                 "pos": r.get("pos"),
@@ -278,11 +283,11 @@ class AllRidersSensor(_EuroMotoSensor):
                 "nation": r.get("nation"),
                 "flag": _flag(r.get("nation")),
                 "bike": r.get("bike"),
+                "team": team_lookup.get(r.get("number"), ""),
                 "points": r.get("points"),
             }
             for r in self._standings
         ]
-        # Group by bike brand for quick overview
         bikes: dict[str, list[str]] = {}
         for r in self._standings:
             bike = r.get("bike") or "Unbekannt"
@@ -385,6 +390,10 @@ class FavoriteRiderSensor(_EuroMotoSensor):
             for entry in self.coordinator.data.standings.get(cls, []):
                 if entry.get("number") == self._rider_number:
                     return cls, entry
+        # Fallback: check scraped rider entries (no points data, but has team/bike)
+        for entry in self.coordinator.data.rider_entries:
+            if entry.get("number") == self._rider_number:
+                return entry.get("class", ""), entry
         return None
 
     @property
@@ -405,6 +414,7 @@ class FavoriteRiderSensor(_EuroMotoSensor):
             "nation": nation,
             "flag": _flag(nation),
             "bike": e.get("bike"),
+            "team": e.get("team", ""),
             "points": e.get("points"),
             "class": cls,
         }
@@ -459,7 +469,9 @@ _SESSION_ICON = {
     "FP1": "🔵", "FP2": "🔵", "FP3": "🔵",
     "Training": "🔵",
     "PreP": "🟡",
-    "Qualifying": "🟡", "Superpole": "🟡",
+    "Q1": "🟡", "Q2": "🟡",
+    "Qualifying": "🟡",
+    "Superpole": "🟡", "Superpole 1": "🟡", "Superpole 2": "🟡",
     "Warm-up": "🟠",
     "Race 1": "🏁", "Race 2": "🏁",
 }
