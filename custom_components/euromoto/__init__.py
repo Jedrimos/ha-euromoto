@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN, CONF_CLASSES, CONF_FAVORITE_RIDERS, CLASS_SUPERBIKE, CLASS_SUPERSPORT
 from .coordinator import EuroMotoCoordinator
 
-PLATFORMS = [Platform.SENSOR, Platform.CALENDAR, Platform.WEATHER]
+PLATFORMS = [Platform.SENSOR, Platform.CALENDAR, Platform.WEATHER, Platform.BINARY_SENSOR, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

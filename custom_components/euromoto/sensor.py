@@ -60,6 +60,7 @@ async def async_setup_entry(
         SeasonCalendarSensor(coordinator),
         RaceWeekendSensor(coordinator),
         WeekendScheduleSensor(coordinator),
+        SessionCountdownSensor(coordinator),
     ]
     for cls in enabled_classes:
         entities.append(StandingsSensor(coordinator, cls))
@@ -495,6 +496,64 @@ def _next_session(schedule: list[dict], event_date_start: date) -> dict | None:
             except (ValueError, AttributeError):
                 continue
     return None
+
+
+# ---------------------------------------------------------------------------
+# Session Countdown Sensor – minutes until the next session starts
+# ---------------------------------------------------------------------------
+
+class SessionCountdownSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:timer-sand"
+    _attr_name = "Session Countdown"
+    _attr_native_unit_of_measurement = "min"
+
+    def __init__(self, coordinator: EuroMotoCoordinator) -> None:
+        super().__init__(coordinator, "session_countdown")
+
+    def _event_start(self) -> date | None:
+        today = date.today()
+        for ev in self.coordinator.data.calendar:
+            if ev.date_end.date() >= today:
+                return ev.date_start.date()
+        return None
+
+    @property
+    def native_value(self) -> int | None:
+        schedule = self.coordinator.data.schedule
+        start = self._event_start()
+        if not schedule or not start:
+            return None
+        now = datetime.now()
+        for day_key, weekday_offset in _DAY_MAP.items():
+            delta = (weekday_offset - start.weekday()) % 7
+            session_date = start + timedelta(days=delta)
+            for s in _sessions_for_day(schedule, day_key):
+                try:
+                    h, m = map(int, s["time_start"].split(":"))
+                    session_start = datetime.combine(session_date, time(h, m))
+                    diff = (session_start - now).total_seconds() / 60
+                    if diff > 0:
+                        return round(diff)
+                except (ValueError, AttributeError, KeyError):
+                    continue
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        schedule = self.coordinator.data.schedule
+        start = self._event_start()
+        if not schedule or not start:
+            return {}
+        nxt = _next_session(schedule, start)
+        if not nxt:
+            return {}
+        return {
+            "session": nxt.get("session"),
+            "class": nxt.get("cls"),
+            "day": _DAY_DE.get(nxt.get("day", ""), nxt.get("day", "")),
+            "time_start": nxt.get("time_start"),
+            "time_end": nxt.get("time_end"),
+        }
 
 
 class WeekendScheduleSensor(_EuroMotoSensor):
