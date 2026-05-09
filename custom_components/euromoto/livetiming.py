@@ -24,20 +24,18 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-_HOST = "livetiming.bike-promotion.com"
+_HOST = "livetiming.raceresults.de"
 _PROTO = "1.5"
-_GROUP = "w"
+_GROUP = "w"   # live timing group
+_GROUP_TICKER = "t"  # ticker / incident feed
 
 # Candidate (base, hub_path) pairs tried in order during negotiate.
-# The 404 on /lt/ means that prefix is wrong; /signalr/ is the most common
-# ASP.NET SignalR default.  We try several until one succeeds.
 _NEGOTIATE_CANDIDATES = [
-    (f"https://{_HOST}", "/signalr"),
     (f"https://{_HOST}", "/lt"),
+    (f"https://{_HOST}", "/signalr"),
     (f"https://{_HOST}", ""),
-    (f"https://{_HOST}", "/hub"),
-    (f"http://{_HOST}", "/signalr"),
     (f"http://{_HOST}", "/lt"),
+    (f"http://{_HOST}", "/signalr"),
     (f"http://{_HOST}", ""),
 ]
 
@@ -74,9 +72,19 @@ class LiveRow:
 
 
 @dataclass
+class LiveIncident:
+    timestamp: str = ""
+    rider: str = ""
+    number: str = ""
+    text: str = ""
+    kind: str = ""  # "crash", "penalty", "info", "sc", "flag"
+
+
+@dataclass
 class LiveTimingState:
     session: LiveSession = field(default_factory=LiveSession)
     rows: list[LiveRow] = field(default_factory=list)
+    incidents: list[LiveIncident] = field(default_factory=list)
     connected: bool = False
     columns: list[str] = field(default_factory=list)
 
@@ -244,6 +252,8 @@ class EuroMotoLiveTiming:
             self._handle_changes(arg)
         elif method in ("h_h", "h_i"):
             self._handle_heat(arg)
+        elif method in ("t_m", "t_i", "ticker"):
+            self._handle_ticker(arg)
 
     def _handle_compressed(self, payload: str) -> None:
         try:
@@ -325,6 +335,49 @@ class EuroMotoLiveTiming:
         rows.sort(key=lambda r: r.position)
         self._state.rows = rows
         self._notify()
+
+    def _handle_ticker(self, arg: Any) -> None:
+        """Handle ticker/incident messages from the t channel."""
+        import datetime as _dt
+
+        if isinstance(arg, dict):
+            items = arg.get("m", arg.get("items", [arg]))
+        elif isinstance(arg, list):
+            items = arg
+        else:
+            items = [{"text": str(arg)}]
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("t", item.get("text", item.get("m", "")))).strip()
+            if not text:
+                continue
+            number = str(item.get("n", item.get("number", item.get("nr", ""))))
+            rider = str(item.get("d", item.get("driver", item.get("name", ""))))
+            ts = str(item.get("ts", item.get("time", _dt.datetime.now().strftime("%H:%M:%S"))))
+
+            # Classify incident type from keywords in text
+            tl = text.lower()
+            if any(w in tl for w in ("crash", "sturz", "fall", "retired", "dnf", "ausfall")):
+                kind = "crash"
+            elif any(w in tl for w in ("safety car", "sc", "safetyCar")):
+                kind = "sc"
+            elif any(w in tl for w in ("penalty", "strafe", "drive through", "long lap")):
+                kind = "penalty"
+            elif any(w in tl for w in ("red flag", "rote flagge", "abbruch")):
+                kind = "flag"
+            else:
+                kind = "info"
+
+            incident = LiveIncident(
+                timestamp=ts, rider=rider, number=number, text=text, kind=kind
+            )
+            # Keep only the last 20 incidents
+            self._state.incidents = ([incident] + self._state.incidents)[:20]
+
+        if items:
+            self._notify()
 
     def _handle_heat(self, arg: dict) -> None:
         f = arg.get("f", -1)

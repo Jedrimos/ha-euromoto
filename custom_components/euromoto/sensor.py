@@ -83,6 +83,7 @@ async def async_setup_entry(
     entities.append(LiveFlagSensor(coordinator))
     entities.append(LiveSessionSensor(coordinator))
     entities.append(LiveLeaderboardSensor(coordinator))
+    entities.append(LiveIncidentsSensor(coordinator))
 
     async_add_entities(entities, update_before_add=True)
 
@@ -740,5 +741,42 @@ class LiveLeaderboardSensor(_EuroMotoSensor):
                     "status": r.status,
                 }
                 for r in lt.rows[:20]
+            ],
+        }
+
+
+class LiveIncidentsSensor(_EuroMotoSensor):
+    _attr_icon = "mdi:alert-circle-outline"
+    _attr_name = "EuroMoto Live Incidents"
+
+    def __init__(self, coordinator: EuroMotoCoordinator) -> None:
+        super().__init__(coordinator, "live_incidents")
+
+    @property
+    def native_value(self) -> str | None:
+        lt = self.coordinator.data.live_timing
+        if not lt or not lt.incidents:
+            return None
+        latest = lt.incidents[0]
+        if latest.rider:
+            return f"{latest.kind.upper()}: #{latest.number} {latest.rider}"
+        return f"{latest.kind.upper()}: {latest.text[:60]}"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        lt = self.coordinator.data.live_timing
+        if not lt:
+            return {}
+        return {
+            "connected": lt.connected,
+            "incidents": [
+                {
+                    "time": inc.timestamp,
+                    "number": inc.number,
+                    "rider": inc.rider,
+                    "kind": inc.kind,
+                    "text": inc.text,
+                }
+                for inc in lt.incidents
             ],
         }

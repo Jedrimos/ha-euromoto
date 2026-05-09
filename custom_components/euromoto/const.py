@@ -77,7 +77,7 @@ CALENDAR_FALLBACK_2026: list[dict[str, str]] = [
 
 TICKETS_URL = "https://tickets.euromoto.racing/"
 LIVESTREAM_URL = f"{BASE_URL}/live/"
-LIVETIMING_URL = "http://livetiming.bike-promotion.com/#/channel/c1"
+LIVETIMING_URL = "https://livetiming.raceresults.de/#/channel/c1"
 
 UPDATE_INTERVAL_NORMAL_HOURS = 6
 UPDATE_INTERVAL_RACE_MINUTES = 30
