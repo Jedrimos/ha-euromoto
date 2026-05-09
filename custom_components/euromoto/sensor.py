@@ -7,7 +7,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -553,10 +553,13 @@ class SessionCountdownSensor(_EuroMotoSensor):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         from homeassistant.helpers.event import async_track_time_interval
+
+        @callback
+        def _push_update(_now):
+            self.async_write_ha_state()
+
         self.async_on_remove(
-            async_track_time_interval(
-                self.hass, lambda _: self.async_write_ha_state(), timedelta(minutes=1)
-            )
+            async_track_time_interval(self.hass, _push_update, timedelta(minutes=1))
         )
 
     def _values(self) -> tuple[int | None, dict | None]:

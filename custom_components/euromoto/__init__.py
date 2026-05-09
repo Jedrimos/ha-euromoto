@@ -8,7 +8,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.start import async_at_started
 
 from .const import DOMAIN, CONF_CLASSES, CONF_FAVORITE_RIDERS, CONF_LIVE_TENANT_ID, CLASS_SUPERBIKE, CLASS_SUPERSPORT
 from .coordinator import EuroMotoCoordinator
@@ -87,10 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-
-    # Register the Lovelace dashboard once HA is fully started
-    async_at_started(hass, lambda _: hass.async_create_task(async_register_dashboard(hass)))
-
+    await async_register_dashboard(hass)
     return True
 
 
