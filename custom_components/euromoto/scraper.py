@@ -274,6 +274,20 @@ def _parse_rider_entries(html: str) -> list[dict[str, Any]]:
     return entries
 
 
+_SCHEDULE_PDF_KEYWORDS = ("zeitplan", "timetable", "programm", "schedule", "fahrplan")
+
+
+def _find_schedule_pdf_link(html: str, base_url: str) -> str | None:
+    """Return the first PDF link whose text or href contains schedule keywords."""
+    soup = BeautifulSoup(html, "html.parser")
+    for a in soup.find_all("a", href=True):
+        href: str = a["href"]
+        label = (a.get_text(strip=True) + " " + href).lower()
+        if href.lower().endswith(".pdf") and any(kw in label for kw in _SCHEDULE_PDF_KEYWORDS):
+            return href if href.startswith("http") else BASE_URL + href
+    return None
+
+
 class EuroMotoScraper:
     def __init__(self, session: aiohttp.ClientSession) -> None:
         self._session = session
@@ -322,27 +336,29 @@ class EuroMotoScraper:
             return {}
 
     async def fetch_schedule(self, event: TrackEvent) -> list[dict[str, Any]]:
-        """Try to scrape the race weekend timetable from multiple URL candidates."""
+        """Try to scrape the race weekend timetable from multiple URL candidates.
+
+        The euromoto.racing site often embeds the schedule as an image, so HTML
+        scraping usually yields nothing.  We therefore also look for PDF
+        download links that the track page may contain.
+        """
         slug = None
         if event.track_url:
             slug = event.track_url.rstrip("/").rsplit("/", 1)[-1]
 
         candidates: list[str] = []
         if slug:
-            # Event-specific page first (most likely to have the timetable)
             candidates += [
                 f"{BASE_URL}/veranstaltung/{slug}/",
                 f"{BASE_URL}/event/{slug}/",
                 f"{BASE_URL}/rennen/{slug}/",
             ]
-        # Homepage often shows current event schedule during race weekend
         candidates.append(BASE_URL + "/")
         if slug:
-            # Also try the programm/zeitplan sub-page under the track URL
             candidates += [
                 f"{BASE_URL}/strecke/{slug}/programm/",
                 f"{BASE_URL}/strecke/{slug}/zeitplan/",
-                f"{BASE_URL}/strecke/{slug}/",  # original track page (last)
+                f"{BASE_URL}/strecke/{slug}/",
             ]
         elif event.track_url:
             candidates.append(event.track_url)
@@ -352,13 +368,48 @@ class EuroMotoScraper:
             if not html:
                 continue
             try:
+                # First try plain HTML schedule
                 sessions = _parse_schedule(html)
                 if sessions:
                     _LOGGER.debug("Schedule found at %s (%d sessions)", url, len(sessions))
                     return sessions
+                # Fall back: look for PDF links containing "zeitplan"/"timetable"
+                pdf_url = _find_schedule_pdf_link(html, url)
+                if pdf_url:
+                    sessions = await self._fetch_schedule_pdf(pdf_url)
+                    if sessions:
+                        _LOGGER.debug("Schedule from PDF %s (%d sessions)", pdf_url, len(sessions))
+                        return sessions
             except Exception as exc:
                 _LOGGER.debug("Schedule parse failed for %s at %s: %s", event.name, url, exc)
         return []
+
+    async def _fetch_schedule_pdf(self, url: str) -> list[dict[str, Any]]:
+        """Download a PDF and try to extract schedule sessions from its text."""
+        try:
+            async with self._session.get(
+                url,
+                headers=SCRAPER_HEADERS,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.read()
+            import io
+            import pdfplumber
+            text_lines: list[str] = []
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text() or ""
+                    text_lines.extend(text.splitlines())
+            # Build fake HTML from the extracted text so _parse_schedule can reuse its logic
+            joined = "\n".join(f"<p>{ln}</p>" for ln in text_lines)
+            return _parse_schedule(joined)
+        except ImportError:
+            _LOGGER.debug("pdfplumber not available – cannot parse schedule PDF")
+            return []
+        except Exception as exc:
+            _LOGGER.debug("Schedule PDF fetch failed for %s: %s", url, exc)
+            return []
 
     async def fetch_rider_entries(self) -> list[dict[str, Any]]:
         """Fetch rider/team data from per-class pages in parallel, fall back to generic URLs."""
