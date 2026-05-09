@@ -8,9 +8,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.start import async_at_started
 
 from .const import DOMAIN, CONF_CLASSES, CONF_FAVORITE_RIDERS, CLASS_SUPERBIKE, CLASS_SUPERSPORT
 from .coordinator import EuroMotoCoordinator
+from .dashboard import async_register_dashboard, async_remove_dashboard
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,6 +84,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    # Register the Lovelace dashboard once HA is fully started
+    async_at_started(hass, lambda _: hass.async_create_task(async_register_dashboard(hass)))
+
     return True
 
 
@@ -91,6 +97,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator: EuroMotoCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await coordinator.async_shutdown()
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up Lovelace dashboard when the integration is fully removed."""
+    await async_remove_dashboard(hass)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
