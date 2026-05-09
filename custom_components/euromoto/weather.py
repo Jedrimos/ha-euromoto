@@ -25,8 +25,7 @@ async def async_setup_entry(
 
 
 class TrackWeatherEntity(CoordinatorEntity[EuroMotoCoordinator], WeatherEntity):
-    _attr_has_entity_name = True
-    _attr_name = "Track Weather"
+    _attr_name = "EuroMoto Track Weather"
     _attr_unique_id = "euromoto_track_weather"
     _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_native_wind_speed_unit = UnitOfSpeed.KILOMETERS_PER_HOUR

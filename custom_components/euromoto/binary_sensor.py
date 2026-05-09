@@ -79,7 +79,6 @@ async def async_setup_entry(
 class _EuroMotoBinarySensor(
     CoordinatorEntity[EuroMotoCoordinator], BinarySensorEntity
 ):
-    _attr_has_entity_name = True
     _attr_should_poll = False
     _attr_device_info = _DEVICE_INFO
 
@@ -102,7 +101,7 @@ class _EuroMotoBinarySensor(
 
 
 class RaceWeekendBinarySensor(_EuroMotoBinarySensor):
-    _attr_name = "Race Weekend"
+    _attr_name = "EuroMoto Race Weekend"
     _attr_icon = "mdi:racing-helmet"
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
@@ -129,7 +128,7 @@ class RaceWeekendBinarySensor(_EuroMotoBinarySensor):
 
 
 class SessionActiveBinarySensor(_EuroMotoBinarySensor):
-    _attr_name = "Session Active"
+    _attr_name = "EuroMoto Session Active"
     _attr_icon = "mdi:timer-play"
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
@@ -157,7 +156,7 @@ class SessionActiveBinarySensor(_EuroMotoBinarySensor):
 
 
 class RaceActiveBinarySensor(_EuroMotoBinarySensor):
-    _attr_name = "Race Active"
+    _attr_name = "EuroMoto Race Active"
     _attr_icon = "mdi:flag-checkered"
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 

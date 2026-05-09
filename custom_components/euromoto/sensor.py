@@ -100,7 +100,6 @@ def _next_event(data: EuroMotoData) -> TrackEvent | None:
 
 
 class _EuroMotoSensor(CoordinatorEntity[EuroMotoCoordinator], SensorEntity):
-    _attr_has_entity_name = True
     _attr_should_poll = False
     _attr_device_info = _DEVICE_INFO
 
@@ -116,8 +115,7 @@ class _EuroMotoSensor(CoordinatorEntity[EuroMotoCoordinator], SensorEntity):
 
 class NextEventSensor(_EuroMotoSensor):
     _attr_icon = "mdi:racing-helmet"
-    _attr_name = "Next Event"
-    _attr_translation_key = "next_event"
+    _attr_name = "EuroMoto Next Event"
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "next_event")
@@ -175,8 +173,7 @@ class NextEventSensor(_EuroMotoSensor):
 
 class SeasonCalendarSensor(_EuroMotoSensor):
     _attr_icon = "mdi:calendar-month"
-    _attr_name = "Season Calendar"
-    _attr_translation_key = "season_calendar"
+    _attr_name = "EuroMoto Season Calendar"
     _attr_native_unit_of_measurement = "events"
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
@@ -222,7 +219,7 @@ class StandingsSensor(_EuroMotoSensor):
     _attr_icon = "mdi:trophy"
 
     _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_standings", CLASS_SUPERSPORT: "ssp_standings", CLASS_SPORTBIKE: "spb_standings"}
-    _NAME_MAP = {CLASS_SUPERBIKE: "SBK Standings", CLASS_SUPERSPORT: "SSP Standings", CLASS_SPORTBIKE: "SPB Standings"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "EuroMoto SBK Standings", CLASS_SUPERSPORT: "EuroMoto SSP Standings", CLASS_SPORTBIKE: "EuroMoto SPB Standings"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_standings"))
@@ -256,7 +253,7 @@ class AllRidersSensor(_EuroMotoSensor):
     _attr_icon = "mdi:account-group"
 
     _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_riders", CLASS_SUPERSPORT: "ssp_riders", CLASS_SPORTBIKE: "spb_riders"}
-    _NAME_MAP = {CLASS_SUPERBIKE: "SBK Riders", CLASS_SUPERSPORT: "SSP Riders", CLASS_SPORTBIKE: "SPB Riders"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "EuroMoto SBK Riders", CLASS_SUPERSPORT: "EuroMoto SSP Riders", CLASS_SPORTBIKE: "EuroMoto SPB Riders"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_riders"))
@@ -310,7 +307,7 @@ class DriverPositionSensor(_EuroMotoSensor):
         super().__init__(coordinator, f"{short}_p{pos}")
         self._cls = cls
         self._pos = pos
-        self._attr_name = f"{_CLASS_SHORT.get(cls, cls.lower()).upper()} P{pos}"
+        self._attr_name = f"EuroMoto {_CLASS_SHORT.get(cls, cls.lower()).upper()} P{pos}"
 
     def _entry(self) -> dict[str, Any] | None:
         for r in self.coordinator.data.standings.get(self._cls, []):
@@ -348,7 +345,7 @@ class StartingGridSensor(_EuroMotoSensor):
     _attr_icon = "mdi:flag-checkered"
 
     _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_grid", CLASS_SUPERSPORT: "ssp_grid", CLASS_SPORTBIKE: "spb_grid"}
-    _NAME_MAP = {CLASS_SUPERBIKE: "SBK Grid", CLASS_SUPERSPORT: "SSP Grid", CLASS_SPORTBIKE: "SPB Grid"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "EuroMoto SBK Grid", CLASS_SUPERSPORT: "EuroMoto SSP Grid", CLASS_SPORTBIKE: "EuroMoto SPB Grid"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_grid"))
@@ -380,7 +377,7 @@ class FavoriteRiderSensor(_EuroMotoSensor):
         super().__init__(coordinator, f"favorite_rider_{rider_number}")
         self._rider_number = rider_number
         self._enabled_classes = enabled_classes
-        self._attr_name = f"Rider #{rider_number}"
+        self._attr_name = f"EuroMoto Rider #{rider_number}"
         self.entity_id = f"sensor.euromoto_rider_{rider_number}"
 
     def _find(self) -> tuple[str, dict[str, Any]] | None:
@@ -391,13 +388,9 @@ class FavoriteRiderSensor(_EuroMotoSensor):
         return None
 
     @property
-    def available(self) -> bool:
-        return self._find() is not None
-
-    @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str:
         found = self._find()
-        return found[1].get("name") if found else None
+        return found[1].get("name") if found else "–"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -423,8 +416,7 @@ class FavoriteRiderSensor(_EuroMotoSensor):
 
 class RaceWeekendSensor(_EuroMotoSensor):
     _attr_icon = "mdi:flag-checkered"
-    _attr_name = "Race Weekend"
-    _attr_translation_key = "race_weekend"
+    _attr_name = "EuroMoto Race Weekend"
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "race_weekend")
@@ -534,31 +526,35 @@ def _upcoming_session(
 
 class SessionCountdownSensor(_EuroMotoSensor):
     _attr_icon = "mdi:timer-sand"
-    _attr_name = "Session Countdown"
+    _attr_name = "EuroMoto Session Countdown"
     _attr_native_unit_of_measurement = "min"
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "session_countdown")
-        self._cached_minutes: int | None = None
-        self._cached_next: dict | None = None
 
-    def _handle_coordinator_update(self) -> None:
-        start = _event_start(self.coordinator.data.calendar)
-        if start and self.coordinator.data.schedule:
-            self._cached_minutes, self._cached_next = _upcoming_session(
-                self.coordinator.data.schedule, start
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        from homeassistant.helpers.event import async_track_time_interval
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass, lambda _: self.async_write_ha_state(), timedelta(minutes=1)
             )
-        else:
-            self._cached_minutes, self._cached_next = None, None
-        super()._handle_coordinator_update()
+        )
+
+    def _values(self) -> tuple[int | None, dict | None]:
+        start = _event_start(self.coordinator.data.calendar)
+        if not start or not self.coordinator.data.schedule:
+            return None, None
+        return _upcoming_session(self.coordinator.data.schedule, start)
 
     @property
     def native_value(self) -> int | None:
-        return self._cached_minutes
+        minutes, _ = self._values()
+        return minutes
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        s = self._cached_next
+        _, s = self._values()
         if not s:
             return {}
         return {
@@ -572,7 +568,7 @@ class SessionCountdownSensor(_EuroMotoSensor):
 
 class WeekendScheduleSensor(_EuroMotoSensor):
     _attr_icon = "mdi:calendar-clock"
-    _attr_name = "Weekend Schedule"
+    _attr_name = "EuroMoto Weekend Schedule"
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator, "weekend_schedule")
