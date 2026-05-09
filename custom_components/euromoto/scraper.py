@@ -286,6 +286,12 @@ class EuroMotoScraper:
             ) as resp:
                 resp.raise_for_status()
                 return await resp.text()
+        except aiohttp.ClientResponseError as exc:
+            if exc.status == 404:
+                _LOGGER.debug("Not found (404): %s", url)
+            else:
+                _LOGGER.warning("Failed to fetch %s: %s", url, exc)
+            return None
         except Exception as exc:
             _LOGGER.warning("Failed to fetch %s: %s", url, exc)
             return None

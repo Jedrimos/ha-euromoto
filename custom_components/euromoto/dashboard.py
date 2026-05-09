@@ -45,7 +45,13 @@ async def async_register_dashboard(hass: HomeAssistant) -> None:
             _LOGGER.debug("EuroMoto: lovelace not available yet, skipping dashboard registration")
             return
 
-        dashboards = lovelace.get("dashboards")
+        # In HA 2024+, hass.data["lovelace"] is a LovelaceData object (not a dict)
+        if hasattr(lovelace, "dashboards"):
+            dashboards = lovelace.dashboards
+        elif hasattr(lovelace, "get"):
+            dashboards = lovelace.get("dashboards")
+        else:
+            dashboards = None
         if not dashboards:
             return
 
