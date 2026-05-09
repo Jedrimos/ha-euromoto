@@ -38,6 +38,7 @@ _HA_STUBS = [
     "homeassistant.components.binary_sensor",
     "homeassistant.components.switch",
     "homeassistant.helpers",
+    "homeassistant.helpers.device_registry",
     "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.update_coordinator",
     "homeassistant.helpers.restore_state",
@@ -103,6 +104,9 @@ _ha_binary.BinarySensorDeviceClass = types.SimpleNamespace(RUNNING="running")  #
 
 _ha_switch = sys.modules["homeassistant.components.switch"]
 _ha_switch.SwitchEntity = object  # type: ignore[assignment]
+
+_ha_device_registry = sys.modules["homeassistant.helpers.device_registry"]
+_ha_device_registry.DeviceInfo = dict  # type: ignore[assignment]
 
 _ha_restore = sys.modules["homeassistant.helpers.restore_state"]
 _ha_restore.RestoreEntity = object  # type: ignore[assignment]
