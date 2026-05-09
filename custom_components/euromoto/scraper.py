@@ -15,6 +15,7 @@ from .const import (
     CALENDAR_FALLBACK_2026,
     CALENDAR_URL,
     COUNTRY_HINTS,
+    RIDERS_URL_CANDIDATES,
     SCRAPER_HEADERS,
     TRACK_URL_TEMPLATE,
 )
@@ -151,6 +152,127 @@ def _parse_track_details(html: str) -> dict[str, Any]:
     return details
 
 
+def _detect_class(text: str) -> str | None:
+    """Return IDM class name if the text contains a class keyword."""
+    t = text.lower()
+    if "superbike" in t:
+        return "Superbike"
+    if "supersport" in t:
+        return "Supersport"
+    if "sportbike" in t or "sport bike" in t:
+        return "Sportbike"
+    return None
+
+
+_RIDER_NUM_RE = re.compile(r"(?<!\d)(\d{1,3})(?!\d)")
+_BIKE_BRANDS = ("Yamaha", "Honda", "Kawasaki", "BMW", "Ducati", "Aprilia", "Suzuki", "Triumph", "KTM", "MV Agusta")
+
+
+def _parse_rider_entries(html: str) -> list[dict[str, Any]]:
+    """Extract rider list from euromoto.racing HTML.
+
+    Returns a list of dicts with keys: number, name, class, bike (opt), team (opt), nation (opt).
+    Uses multiple strategies; returns [] if nothing useful found.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    entries: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    current_class = "Superbike"
+
+    def _add(number: int, name: str, bike: str = "", team: str = "", nation: str = "", cls: str = "") -> None:
+        if number in seen or number < 1 or number > 999 or len(name) < 2:
+            return
+        seen.add(number)
+        entry: dict[str, Any] = {"number": number, "name": name[:60], "class": cls or current_class}
+        if bike:
+            entry["bike"] = bike[:40]
+        if team:
+            entry["team"] = team[:60]
+        if nation:
+            entry["nation"] = nation[:3].upper()
+        entries.append(entry)
+
+    def _find_brand(text: str) -> str:
+        for b in _BIKE_BRANDS:
+            if b.lower() in text.lower():
+                return b
+        return ""
+
+    # ── Strategy 1: <table> rows ──────────────────────────────────────────────
+    for table in soup.find_all("table"):
+        # Check for a class heading above the table
+        for prev in table.find_all_previous(["h1", "h2", "h3", "h4"], limit=3):
+            cls = _detect_class(prev.get_text())
+            if cls:
+                current_class = cls
+                break
+
+        header_cells = [th.get_text(strip=True).lower() for th in table.find_all("th")]
+        rows = table.find_all("tr")
+        data_rows = rows[1:] if header_cells else rows
+
+        for row in data_rows:
+            cells = [td.get_text(" ", strip=True) for td in row.find_all("td")]
+            if len(cells) < 2:
+                continue
+            number = None
+            for c in cells[:3]:
+                stripped = c.strip("#").strip()
+                if stripped.isdigit():
+                    n = int(stripped)
+                    if 1 <= n <= 999:
+                        number = n
+                        break
+            if number is None:
+                continue
+            non_num = [c for c in cells if not c.strip("#").strip().isdigit() and len(c) > 1]
+            name = non_num[0] if non_num else ""
+            bike = _find_brand(" ".join(cells))
+            team = non_num[1] if len(non_num) > 1 and non_num[1] != name else ""
+            _add(number, name, bike=bike, team=team)
+
+    # ── Strategy 2: headings followed by structured divs/cards ───────────────
+    for heading in soup.find_all(["h1", "h2", "h3", "h4"]):
+        cls = _detect_class(heading.get_text())
+        if cls:
+            current_class = cls
+        # Walk siblings to find rider cards
+        for sib in heading.find_next_siblings(["div", "ul", "section", "article"], limit=5):
+            for card in sib.find_all(["div", "article", "li"]):
+                text = card.get_text(" ", strip=True)
+                if len(text) < 3:
+                    continue
+                m = _RIDER_NUM_RE.search(text[:30])
+                if not m:
+                    continue
+                number = int(m.group(1))
+                rest = text[m.end():].strip()
+                name = rest.split("\n")[0].strip()[:60]
+                bike = _find_brand(text)
+                _add(number, name, bike=bike)
+
+    # ── Strategy 3: broad scan for number + name patterns ────────────────────
+    if not entries:
+        for el in soup.find_all(["p", "li", "div", "td"]):
+            text = el.get_text(" ", strip=True)
+            # Update class context
+            cls = _detect_class(text)
+            if cls and len(text) < 50:
+                current_class = cls
+                continue
+            m = _RIDER_NUM_RE.match(text)
+            if not m:
+                continue
+            number = int(m.group(1))
+            rest = text[m.end():].strip()
+            name = rest.split()[0] if rest.split() else ""
+            # name should look like a person (capitalised first letter)
+            if name and name[0].isupper() and len(name) > 2:
+                _add(number, rest[:60], bike=_find_brand(text))
+
+    return entries
+
+
 class EuroMotoScraper:
     def __init__(self, session: aiohttp.ClientSession) -> None:
         self._session = session
@@ -205,21 +327,51 @@ class EuroMotoScraper:
             _LOGGER.debug("Schedule parse failed for %s: %s", event.name, exc)
             return []
 
+    async def fetch_rider_entries(self) -> list[dict[str, Any]]:
+        """Try each candidate URL for rider/team data; return [] on total failure."""
+        for url in RIDERS_URL_CANDIDATES:
+            html = await self._get(url)
+            if not html:
+                continue
+            try:
+                result = _parse_rider_entries(html)
+                if result:
+                    _LOGGER.debug("Fetched %d rider entries from %s", len(result), url)
+                    return result
+            except Exception as exc:
+                _LOGGER.debug("Rider parse failed for %s: %s", url, exc)
+        return []
+
 
 _TIME_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")
+# More-specific patterns must come before shorter ones (first match wins).
 _SESSION_KEYWORDS = {
-    "fp1": "FP1", "fp2": "FP2", "fp3": "FP3",
+    "freies training 1": "FP1", "freies training 2": "FP2", "freies training 3": "FP3",
     "freies training": "FP1",
+    "fp1": "FP1", "fp2": "FP2", "fp3": "FP3",
     "training": "Training",
-    "qualifying": "Qualifying",
+    "qualifying 1": "Q1", "qualifying 2": "Q2",
+    "qualifying": "Q1",
+    "superpole 1": "Superpole 1", "superpole 2": "Superpole 2",
     "superpole": "Superpole",
     "prep": "PreP",
     "warm-up": "Warm-up",
     "warmup": "Warm-up",
     "rennen 1": "Race 1", "race 1": "Race 1",
     "rennen 2": "Race 2", "race 2": "Race 2",
+    " r1": "Race 1", " r2": "Race 2",
+    "q1": "Q1", "q2": "Q2",
 }
 _CLASS_KEYWORDS = {
+    "zx-4rr": "ZX-4RR Cup",
+    "zx4rr": "ZX-4RR Cup",
+    "zx-6r": "ZX-6R Cup",
+    "zx6r": "ZX-6R Cup",
+    "adac junior": "ADAC Cup",
+    "adac": "ADAC Cup",
+    "moto4 northern": "Moto4 Cup",
+    "moto4": "Moto4 Cup",
+    "northern cup": "Moto4 Cup",
     "superbike": "Superbike",
     "supersport": "Supersport",
     "sportbike": "Sportbike",
@@ -274,7 +426,7 @@ def _parse_schedule(html: str) -> list[dict[str, Any]]:
                 cls = label
                 break
 
-        is_race = session.startswith("Race")
+        is_race = session.startswith("Race") or session in ("Race 1", "Race 2")
         sessions.append({
             "day": current_day,
             "time_start": time_start,
