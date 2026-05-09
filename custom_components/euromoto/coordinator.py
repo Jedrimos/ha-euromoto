@@ -207,10 +207,25 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         schedule: list[dict[str, Any]] = []
         current_event = _next_event(calendar)
         if current_event:
+            # Round number = position in sorted calendar (1-based)
+            round_num = next(
+                (i + 1 for i, e in enumerate(calendar) if e is current_event), 1
+            )
             try:
-                schedule = await scraper.fetch_schedule(current_event)
+                # 1. Try PDF from results.bike-promotion.com
+                pdf_lines = await pdf_parser.fetch_schedule(round_num, year)
+                if pdf_lines:
+                    from .scraper import _parse_schedule as _ps
+                    joined = "\n".join(f"<p>{ln}</p>" for ln in pdf_lines)
+                    schedule = _ps(joined)
             except Exception as exc:
-                _LOGGER.debug("Schedule fetch failed: %s", exc)
+                _LOGGER.debug("PDF schedule fetch failed: %s", exc)
+            if not schedule:
+                # 2. Try HTML scraping (incl. PDF links embedded on track pages)
+                try:
+                    schedule = await scraper.fetch_schedule(current_event)
+                except Exception as exc:
+                    _LOGGER.debug("Schedule fetch failed: %s", exc)
         if not schedule:
             schedule = list(SCHEDULE_FALLBACK)
 

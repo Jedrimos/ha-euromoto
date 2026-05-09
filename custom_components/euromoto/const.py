@@ -251,6 +251,16 @@ GRID_PDF_URL_TEMPLATES = [
 ]
 GRID_PDF_BASE_URL = "https://results.bike-promotion.com/Results"
 
+# Schedule / timetable PDFs – tried in order until one succeeds
+SCHEDULE_PDF_URL_TEMPLATES = [
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Zeitplan.pdf",
+    "{base}/{year}/{round:02d}%20IDM/Zeitplan.pdf",
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Programm.pdf",
+    "{base}/{year}/{round:02d}%20IDM/Programm.pdf",
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Timetable.pdf",
+    "{base}/{year}/{round:02d}%20IDM/Timetable.pdf",
+]
+
 # ISO 3166-1 alpha-2 → flag emoji
 NATION_FLAGS: dict[str, str] = {
     "DE": "🇩🇪",
