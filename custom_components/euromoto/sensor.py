@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -29,6 +30,11 @@ from .coordinator import EuroMotoCoordinator, EuroMotoData
 from .scraper import TrackEvent
 
 _LOGGER = logging.getLogger(__name__)
+
+_DEVICE_INFO = DeviceInfo(
+    identifiers={(DOMAIN, "euromoto")},
+    name="EuroMoto",
+)
 
 _CLASS_SHORT = {
     CLASS_SUPERBIKE: "sbk",
@@ -96,6 +102,7 @@ def _next_event(data: EuroMotoData) -> TrackEvent | None:
 class _EuroMotoSensor(CoordinatorEntity[EuroMotoCoordinator], SensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_device_info = _DEVICE_INFO
 
     def __init__(self, coordinator: EuroMotoCoordinator, unique_suffix: str) -> None:
         super().__init__(coordinator)
@@ -214,7 +221,7 @@ class StandingsSensor(_EuroMotoSensor):
     _attr_icon = "mdi:trophy"
 
     _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_standings", CLASS_SUPERSPORT: "ssp_standings", CLASS_SPORTBIKE: "spb_standings"}
-    _NAME_MAP = {CLASS_SUPERBIKE: "Superbike Standings", CLASS_SUPERSPORT: "Supersport Standings", CLASS_SPORTBIKE: "Sportbike Standings"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "SBK Standings", CLASS_SUPERSPORT: "SSP Standings", CLASS_SPORTBIKE: "SPB Standings"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_standings"))
@@ -248,7 +255,7 @@ class AllRidersSensor(_EuroMotoSensor):
     _attr_icon = "mdi:account-group"
 
     _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_riders", CLASS_SUPERSPORT: "ssp_riders", CLASS_SPORTBIKE: "spb_riders"}
-    _NAME_MAP = {CLASS_SUPERBIKE: "Superbike Riders", CLASS_SUPERSPORT: "Supersport Riders", CLASS_SPORTBIKE: "Sportbike Riders"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "SBK Riders", CLASS_SUPERSPORT: "SSP Riders", CLASS_SPORTBIKE: "SPB Riders"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_riders"))
@@ -302,7 +309,7 @@ class DriverPositionSensor(_EuroMotoSensor):
         super().__init__(coordinator, f"{short}_p{pos}")
         self._cls = cls
         self._pos = pos
-        self._attr_name = f"{cls} P{pos}"
+        self._attr_name = f"{_CLASS_SHORT.get(cls, cls.lower()).upper()} P{pos}"
 
     def _entry(self) -> dict[str, Any] | None:
         for r in self.coordinator.data.standings.get(self._cls, []):
@@ -340,7 +347,7 @@ class StartingGridSensor(_EuroMotoSensor):
     _attr_icon = "mdi:flag-checkered"
 
     _SUFFIX_MAP = {CLASS_SUPERBIKE: "sbk_grid", CLASS_SUPERSPORT: "ssp_grid", CLASS_SPORTBIKE: "spb_grid"}
-    _NAME_MAP = {CLASS_SUPERBIKE: "Superbike Starting Grid", CLASS_SUPERSPORT: "Supersport Starting Grid", CLASS_SPORTBIKE: "Sportbike Starting Grid"}
+    _NAME_MAP = {CLASS_SUPERBIKE: "SBK Grid", CLASS_SUPERSPORT: "SSP Grid", CLASS_SPORTBIKE: "SPB Grid"}
 
     def __init__(self, coordinator: EuroMotoCoordinator, cls: str) -> None:
         super().__init__(coordinator, self._SUFFIX_MAP.get(cls, f"{cls.lower()}_grid"))
@@ -372,7 +379,7 @@ class FavoriteRiderSensor(_EuroMotoSensor):
         super().__init__(coordinator, f"favorite_rider_{rider_number}")
         self._rider_number = rider_number
         self._enabled_classes = enabled_classes
-        self._attr_name = f"Lieblingsfahrer #{rider_number}"
+        self._attr_name = f"Rider #{rider_number}"
 
     def _find(self) -> tuple[str, dict[str, Any]] | None:
         for cls in self._enabled_classes:

@@ -6,12 +6,15 @@ from datetime import date, datetime, timedelta, timezone
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, LIVETIMING_URL, LIVESTREAM_URL, TICKETS_URL
 from .coordinator import EuroMotoCoordinator
 from .scraper import TrackEvent
+
+_DEVICE_INFO = DeviceInfo(identifiers={(DOMAIN, "euromoto")}, name="EuroMoto")
 
 
 async def async_setup_entry(
@@ -51,6 +54,7 @@ class EuroMotoCalendar(CoordinatorEntity[EuroMotoCoordinator], CalendarEntity):
     _attr_has_entity_name = True
     _attr_name = "Race Calendar"
     _attr_icon = "mdi:calendar-star"
+    _attr_device_info = _DEVICE_INFO
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator)

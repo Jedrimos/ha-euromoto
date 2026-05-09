@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -20,6 +21,8 @@ from .const import (
 )
 from .coordinator import EuroMotoCoordinator
 from .scraper import TrackEvent
+
+_DEVICE_INFO = DeviceInfo(identifiers={(DOMAIN, "euromoto")}, name="EuroMoto")
 
 
 def _active_event(calendar: list[TrackEvent]) -> TrackEvent | None:
@@ -78,6 +81,7 @@ class _EuroMotoBinarySensor(
 ):
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _attr_device_info = _DEVICE_INFO
 
     def __init__(self, coordinator: EuroMotoCoordinator, unique_suffix: str) -> None:
         super().__init__(coordinator)

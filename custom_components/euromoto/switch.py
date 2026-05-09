@@ -6,10 +6,13 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
+
+_DEVICE_INFO = DeviceInfo(identifiers={(DOMAIN, "euromoto")}, name="EuroMoto")
 
 
 async def async_setup_entry(
@@ -30,6 +33,7 @@ class NoSpoilerSwitch(SwitchEntity, RestoreEntity):
     _attr_name = "No-Spoiler Modus"
     _attr_icon = "mdi:eye-off"
     _attr_should_poll = False
+    _attr_device_info = _DEVICE_INFO
 
     def __init__(self, entry_id: str) -> None:
         self._attr_unique_id = f"euromoto_no_spoiler_{entry_id}"

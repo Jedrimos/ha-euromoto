@@ -5,11 +5,14 @@ from homeassistant.components.weather import WeatherEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPressure, UnitOfSpeed, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import EuroMotoCoordinator
+
+_DEVICE_INFO = DeviceInfo(identifiers={(DOMAIN, "euromoto")}, name="EuroMoto")
 
 
 async def async_setup_entry(
@@ -28,6 +31,7 @@ class TrackWeatherEntity(CoordinatorEntity[EuroMotoCoordinator], WeatherEntity):
     _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_native_wind_speed_unit = UnitOfSpeed.KILOMETERS_PER_HOUR
     _attr_native_pressure_unit = UnitOfPressure.HPA
+    _attr_device_info = _DEVICE_INFO
 
     def __init__(self, coordinator: EuroMotoCoordinator) -> None:
         super().__init__(coordinator)

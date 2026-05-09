@@ -371,12 +371,12 @@ views:
       - type: conditional
         conditions:
           - condition: state
-            entity: sensor.euromoto_favorite_rider_94
+            entity: sensor.euromoto_rider_94
             state_not: unavailable
         card:
           type: markdown
           content: >
-            {% set s = 'sensor.euromoto_favorite_rider_94' %}
+            {% set s = 'sensor.euromoto_rider_94' %}
             ## {{ state_attr(s, 'flag') }} {{ states(s) }} — #{{ state_attr(s, 'number') }}
 
             | | |
