@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import uuid
 
 import yaml
 
@@ -13,6 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _DASHBOARD_URL_PATH = "euromoto"
 _STORAGE_KEY = f"lovelace.{_DASHBOARD_URL_PATH}"
+_DASHBOARDS_STORAGE_KEY = "lovelace_dashboards"
 _STORAGE_VERSION = 1
 
 _YAML_PATH = pathlib.Path(__file__).parent / "lovelace" / "dashboard.yaml"
@@ -20,15 +22,32 @@ _YAML_PATH = pathlib.Path(__file__).parent / "lovelace" / "dashboard.yaml"
 
 def _load_config() -> dict:
     raw = _YAML_PATH.read_text(encoding="utf-8")
-    # Strip the comment header before parsing
     lines = [ln for ln in raw.splitlines() if not ln.startswith("#")]
     return yaml.safe_load("\n".join(lines))
+
+
+def _find_collection(lovelace: object) -> object | None:
+    """Return the DashboardsCollection from lovelace data, regardless of HA version."""
+    if lovelace is None:
+        return None
+    # Search common attribute names (varies by HA version)
+    for attr in ("dashboards", "storage", "dashboard_storage"):
+        candidate = getattr(lovelace, attr, None)
+        if candidate is not None and hasattr(candidate, "async_create"):
+            return candidate
+    # Older HA: plain dict
+    if hasattr(lovelace, "get"):
+        for key in ("dashboards", "storage"):
+            candidate = lovelace.get(key)
+            if candidate is not None and hasattr(candidate, "async_create"):
+                return candidate
+    return None
 
 
 async def async_register_dashboard(hass: HomeAssistant) -> None:
     """Create the EuroMoto sidebar dashboard (storage mode) if not already present."""
     try:
-        # --- 1. Write initial Lovelace config to storage (skip if user already customised) ---
+        # --- 1. Write initial Lovelace card config to storage ---
         store: Store = Store(hass, _STORAGE_VERSION, _STORAGE_KEY)
         existing = await store.async_load()
         if not existing:
@@ -39,56 +58,73 @@ async def async_register_dashboard(hass: HomeAssistant) -> None:
             except Exception as exc:
                 _LOGGER.warning("EuroMoto: could not load dashboard YAML: %s", exc)
 
-        # --- 2. Register the dashboard in the Lovelace dashboards collection ---
-        lovelace = hass.data.get("lovelace")
-        if not lovelace:
-            _LOGGER.debug("EuroMoto: lovelace not available yet, skipping dashboard registration")
-            return
-
-        # In HA 2024+, hass.data["lovelace"] is a LovelaceData object (not a dict)
-        if hasattr(lovelace, "dashboards"):
-            dashboards = lovelace.dashboards
-        elif hasattr(lovelace, "get"):
-            dashboards = lovelace.get("dashboards")
-        else:
-            dashboards = None
-        if not dashboards:
-            return
-
-        # Idempotent: don't create if the URL path already exists
-        try:
-            if any(d.get("url_path") == _DASHBOARD_URL_PATH for d in dashboards.async_items()):
+        # --- 2. Try to register via the live DashboardsCollection API ---
+        collection = _find_collection(hass.data.get("lovelace"))
+        if collection is not None:
+            try:
+                existing_paths = {
+                    d.get("url_path") for d in collection.async_items()
+                }
+                if _DASHBOARD_URL_PATH not in existing_paths:
+                    await collection.async_create({
+                        "require_admin": False,
+                        "url_path": _DASHBOARD_URL_PATH,
+                        "show_in_sidebar": True,
+                        "mode": "storage",
+                        "icon": "mdi:racing-helmet",
+                        "title": "EuroMoto",
+                    })
+                    _LOGGER.info("EuroMoto: dashboard registered at /%s", _DASHBOARD_URL_PATH)
                 return
-        except Exception:
-            pass
+            except Exception as exc:
+                _LOGGER.debug("EuroMoto: live dashboard registration failed: %s – trying storage fallback", exc)
 
-        await dashboards.async_create({
-            "require_admin": False,
-            "url_path": _DASHBOARD_URL_PATH,
-            "show_in_sidebar": True,
-            "mode": "storage",
-            "icon": "mdi:racing-helmet",
-            "title": "EuroMoto",
-        })
-        _LOGGER.info("EuroMoto: dashboard registered at /%s", _DASHBOARD_URL_PATH)
+        # --- 3. Fallback: write dashboard metadata directly to storage ---
+        # Takes effect after the next HA restart.
+        await _register_via_storage(hass)
 
     except Exception as exc:
-        # Never block integration setup because of dashboard issues
         _LOGGER.warning("EuroMoto: dashboard registration failed (non-fatal): %s", exc)
+
+
+async def _register_via_storage(hass: HomeAssistant) -> None:
+    """Write dashboard metadata to lovelace_dashboards storage (requires restart)."""
+    meta_store: Store = Store(hass, _STORAGE_VERSION, _DASHBOARDS_STORAGE_KEY)
+    data = await meta_store.async_load() or {"items": []}
+    items: list[dict] = data.get("items", [])
+    if any(item.get("url_path") == _DASHBOARD_URL_PATH for item in items):
+        return
+    items.append({
+        "id": str(uuid.uuid4()),
+        "url_path": _DASHBOARD_URL_PATH,
+        "title": "EuroMoto",
+        "icon": "mdi:racing-helmet",
+        "show_in_sidebar": True,
+        "require_admin": False,
+        "mode": "storage",
+    })
+    data["items"] = items
+    await meta_store.async_save(data)
+    _LOGGER.info(
+        "EuroMoto: dashboard metadata written to storage – "
+        "will appear in sidebar after HA restart"
+    )
 
 
 async def async_remove_dashboard(hass: HomeAssistant) -> None:
     """Remove the EuroMoto dashboard when the integration is deleted."""
     try:
-        lovelace = hass.data.get("lovelace")
-        if lovelace:
-            dashboards = lovelace.get("dashboards")
-            if dashboards:
-                for item in list(dashboards.async_items()):
-                    if item.get("url_path") == _DASHBOARD_URL_PATH:
-                        await dashboards.async_delete(item["id"])
-                        break
-        store: Store = Store(hass, _STORAGE_VERSION, _STORAGE_KEY)
-        await store.async_remove()
+        collection = _find_collection(hass.data.get("lovelace"))
+        if collection is not None:
+            for item in list(collection.async_items()):
+                if item.get("url_path") == _DASHBOARD_URL_PATH:
+                    await collection.async_delete(item["id"])
+                    break
+        # Clean up both storage files
+        await Store(hass, _STORAGE_VERSION, _STORAGE_KEY).async_remove()
+        meta_store: Store = Store(hass, _STORAGE_VERSION, _DASHBOARDS_STORAGE_KEY)
+        data = await meta_store.async_load() or {"items": []}
+        data["items"] = [i for i in data.get("items", []) if i.get("url_path") != _DASHBOARD_URL_PATH]
+        await meta_store.async_save(data)
     except Exception as exc:
         _LOGGER.debug("EuroMoto: dashboard removal failed (non-fatal): %s", exc)
