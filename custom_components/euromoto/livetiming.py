@@ -33,6 +33,10 @@ _GROUP_TICKER = "t"  # ticker / incident feed
 _NEGOTIATE_CANDIDATES = [
     (f"https://{_HOST}", "/lt"),
     (f"https://{_HOST}", "/signalr"),
+    (f"https://{_HOST}", "/hub"),
+    (f"https://{_HOST}", "/timing"),
+    (f"https://{_HOST}", "/api"),
+    (f"https://{_HOST}", "/live"),
     (f"https://{_HOST}", ""),
     (f"http://{_HOST}", "/lt"),
     (f"http://{_HOST}", "/signalr"),
