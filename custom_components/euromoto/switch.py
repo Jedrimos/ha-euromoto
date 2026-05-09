@@ -37,6 +37,7 @@ class NoSpoilerSwitch(SwitchEntity, RestoreEntity):
 
     def __init__(self, entry_id: str) -> None:
         self._attr_unique_id = f"euromoto_no_spoiler_{entry_id}"
+        self.entity_id = "switch.euromoto_no_spoiler_modus"
         self._is_on = False
 
     async def async_added_to_hass(self) -> None:
