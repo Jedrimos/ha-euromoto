@@ -26,20 +26,35 @@ _LOGGER = logging.getLogger(__name__)
 
 _HOST = "livetiming.raceresults.de"
 _PROTO = "1.5"
-_GROUP = "w"   # live timing group
+_GROUP = "w"         # live timing group
 _GROUP_TICKER = "t"  # ticker / incident feed
+
+# Some SignalR servers enforce an Origin check – send browser-like headers.
+_NEGOTIATE_HEADERS = {
+    "Origin": f"https://{_HOST}",
+    "Referer": f"https://{_HOST}/",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
 
 # Candidate (base, hub_path) pairs tried in order during negotiate.
 _NEGOTIATE_CANDIDATES = [
     (f"https://{_HOST}", "/lt"),
     (f"https://{_HOST}", "/signalr"),
+    (f"https://{_HOST}", "/hubs"),
     (f"https://{_HOST}", "/hub"),
     (f"https://{_HOST}", "/timing"),
+    (f"https://{_HOST}", "/race"),
     (f"https://{_HOST}", "/api"),
     (f"https://{_HOST}", "/live"),
+    (f"https://{_HOST}", "/channel"),
     (f"https://{_HOST}", ""),
     (f"http://{_HOST}", "/lt"),
     (f"http://{_HOST}", "/signalr"),
+    (f"http://{_HOST}", "/hubs"),
     (f"http://{_HOST}", ""),
 ]
 
@@ -113,6 +128,7 @@ class EuroMotoLiveTiming:
         self._columns: list[str] = []
         self._raw_rows: dict[int, dict[int, Any]] = {}
         self._task: asyncio.Task | None = None
+        self._ticker_task: asyncio.Task | None = None
         self._callbacks: list[Callable[[LiveTimingState], None]] = []
 
     @property
@@ -130,26 +146,30 @@ class EuroMotoLiveTiming:
                 pass
 
     async def async_start(self) -> None:
-        if self._task and not self._task.done():
-            return
-        self._task = asyncio.create_task(self._run())
+        if not (self._task and not self._task.done()):
+            self._task = asyncio.create_task(self._run(_GROUP))
+        if not (self._ticker_task and not self._ticker_task.done()):
+            self._ticker_task = asyncio.create_task(self._run(_GROUP_TICKER))
 
     async def async_stop(self) -> None:
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+        for task in (self._task, self._ticker_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._task = None
+        self._ticker_task = None
         self._state.connected = False
         self._notify()
 
-    async def _run(self) -> None:
+    async def _run(self, group: str) -> None:
         backoff = 15
         attempts = 0
         while True:
             try:
-                await self._connect_once()
+                await self._connect_once(group)
                 backoff = 15
                 attempts = 0
             except asyncio.CancelledError:
@@ -157,17 +177,21 @@ class EuroMotoLiveTiming:
             except Exception as exc:
                 attempts += 1
                 lvl = _LOGGER.warning if attempts <= 3 else _LOGGER.debug
-                lvl("EuroMoto live timing: connection failed (attempt %d): %s – retry in %ds", attempts, exc, backoff)
-            self._state.connected = False
+                lvl(
+                    "EuroMoto live timing [%s]: connection failed (attempt %d): %s – retry in %ds",
+                    group, attempts, exc, backoff,
+                )
+            if group == _GROUP:
+                self._state.connected = False
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 300)
 
-    async def _connect_once(self) -> None:
+    async def _connect_once(self, group: str = _GROUP) -> None:
         ts = int(time.time() * 1000)
         params = {
             "clientProtocol": _PROTO,
             "_tk": self._tenant_id,
-            "_gr": _GROUP,
+            "_gr": group,
             "_": ts,
         }
         # Probe candidate (base, hub_path) pairs until negotiate succeeds
@@ -181,13 +205,14 @@ class EuroMotoLiveTiming:
                 async with self._session.get(
                     url,
                     params=params,
+                    headers=_NEGOTIATE_HEADERS,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     resp.raise_for_status()
                     data = await resp.json(content_type=None)
                 base = candidate_base
                 hub_path = candidate_hub
-                _LOGGER.debug("Negotiate succeeded at %s", url)
+                _LOGGER.debug("Negotiate succeeded at %s (group=%s)", url, group)
                 break
             except Exception as exc:
                 _LOGGER.debug("Negotiate failed at %s: %s", url, exc)
@@ -206,11 +231,11 @@ class EuroMotoLiveTiming:
             f"?transport=webSockets"
             f"&clientProtocol={_PROTO}"
             f"&_tk={quote(self._tenant_id, safe='')}"
-            f"&_gr={_GROUP}"
+            f"&_gr={group}"
             f"&connectionToken={quote(token, safe='')}"
             f"&tid=0"
         )
-        _LOGGER.debug("EuroMoto live timing: connecting to %s", ws_url)
+        _LOGGER.debug("EuroMoto live timing [%s]: connecting to %s", group, ws_url)
         async with self._session.ws_connect(
             ws_url,
             timeout=aiohttp.ClientTimeout(total=None),
@@ -220,23 +245,29 @@ class EuroMotoLiveTiming:
             asyncio.create_task(self._session.get(
                 f"{base}{hub_path}/start",
                 params={**params, "transport": "webSockets", "connectionToken": token},
+                headers=_NEGOTIATE_HEADERS,
             ))
-            self._state.connected = True
-            self._notify()
-            _LOGGER.info("EuroMoto live timing: connected (tenant=%s, base=%s)", self._tenant_id, base)
+            if group == _GROUP:
+                self._state.connected = True
+                self._notify()
+            _LOGGER.info(
+                "EuroMoto live timing [%s]: connected (tenant=%s, base=%s)",
+                group, self._tenant_id, base,
+            )
 
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     try:
                         self._handle_frame(json.loads(msg.data))
                     except Exception as exc:
-                        _LOGGER.debug("Frame parse error: %s", exc)
+                        _LOGGER.debug("Frame parse error [%s]: %s", group, exc)
                 elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                     break
 
-        self._state.connected = False
-        self._notify()
-        _LOGGER.debug("EuroMoto live timing: WebSocket closed")
+        if group == _GROUP:
+            self._state.connected = False
+            self._notify()
+        _LOGGER.debug("EuroMoto live timing [%s]: WebSocket closed", group)
 
     # ── Frame handling ────────────────────────────────────────────────────────
 
