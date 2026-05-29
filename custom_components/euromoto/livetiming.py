@@ -41,6 +41,7 @@ _NEGOTIATE_HEADERS = {
 }
 
 # Candidate (base, hub_path) pairs tried in order during negotiate.
+# Paths are ordered by likelihood based on known raceresults.de architecture.
 _NEGOTIATE_CANDIDATES = [
     (f"https://{_HOST}", "/lt"),
     (f"https://{_HOST}", "/signalr"),
@@ -51,6 +52,14 @@ _NEGOTIATE_CANDIDATES = [
     (f"https://{_HOST}", "/api"),
     (f"https://{_HOST}", "/live"),
     (f"https://{_HOST}", "/channel"),
+    (f"https://{_HOST}", "/realtime"),
+    (f"https://{_HOST}", "/push"),
+    (f"https://{_HOST}", "/ws"),
+    (f"https://{_HOST}", "/socket"),
+    # Channel-prefixed paths (tenant ID embedded in URL)
+    (f"https://{_HOST}", "/c1"),
+    (f"https://{_HOST}", "/lt/c1"),
+    (f"https://{_HOST}", "/channel/c1"),
     (f"https://{_HOST}", ""),
     (f"http://{_HOST}", "/lt"),
     (f"http://{_HOST}", "/signalr"),
@@ -176,7 +185,9 @@ class EuroMotoLiveTiming:
                 raise
             except Exception as exc:
                 attempts += 1
-                lvl = _LOGGER.warning if attempts == 1 else _LOGGER.debug
+                # INFO is not shown in the HA warning panel; reserve WARNING for
+                # genuinely unexpected errors, not expected 404s when no session runs.
+                lvl = _LOGGER.info if attempts == 1 else _LOGGER.debug
                 lvl(
                     "EuroMoto live timing [%s]: connection failed (attempt %d): %s – retry in %ds",
                     group, attempts, exc, backoff,
@@ -185,6 +196,53 @@ class EuroMotoLiveTiming:
                 self._state.connected = False
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 300)
+
+    async def _discover_hub_path(self) -> str | None:
+        """Fetch the page source and extract the SignalR hub path from the JS bundle."""
+        import re
+
+        try:
+            async with self._session.get(
+                f"https://{_HOST}/",
+                headers=_NEGOTIATE_HEADERS,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                html = await resp.text()
+        except Exception:
+            return None
+
+        script_urls = re.findall(
+            r'<script[^>]+src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', html
+        )
+        for src in script_urls[:8]:
+            url = src if src.startswith("http") else f"https://{_HOST}{src}"
+            try:
+                async with self._session.get(
+                    url,
+                    headers=_NEGOTIATE_HEADERS,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    if resp.status != 200:
+                        continue
+                    js = await resp.text()
+            except Exception:
+                continue
+
+            # Look for hub path strings adjacent to "negotiate"
+            for m in re.finditer(r'["\']([/][\w/-]{1,40})["\']', js):
+                candidate = m.group(1)
+                if any(
+                    s in candidate
+                    for s in ("/lt", "/signalr", "/hub", "/timing", "/race", "/live", "/push", "/ws")
+                ):
+                    _LOGGER.debug(
+                        "EuroMoto: auto-discovered hub path candidate: %s", candidate
+                    )
+                    return candidate.rstrip("/")
+
+        return None
 
     async def _connect_once(self, group: str = _GROUP) -> None:
         ts = int(time.time() * 1000)
@@ -199,7 +257,15 @@ class EuroMotoLiveTiming:
         hub_path = ""
         data: dict = {}
         last_exc: Exception = RuntimeError("No negotiate candidate succeeded")
-        for candidate_base, candidate_hub in _NEGOTIATE_CANDIDATES:
+
+        # Build candidates: hardcoded list first, then auto-discovered path
+        candidates = list(_NEGOTIATE_CANDIDATES)
+        discovered = await self._discover_hub_path()
+        if discovered:
+            _LOGGER.debug("EuroMoto: prepending auto-discovered path %s", discovered)
+            candidates.insert(0, (f"https://{_HOST}", discovered))
+
+        for candidate_base, candidate_hub in candidates:
             url = f"{candidate_base}{candidate_hub}/negotiate"
             try:
                 async with self._session.get(
@@ -239,14 +305,23 @@ class EuroMotoLiveTiming:
         async with self._session.ws_connect(
             ws_url,
             timeout=aiohttp.ClientTimeout(total=None),
-            heartbeat=30,
+            # heartbeat omitted: aiohttp's internal heartbeat task raises
+            # ClientConnectionResetError on close → "Task exception was never retrieved"
         ) as ws:
-            # Step 3: start handshake (fire-and-forget)
-            asyncio.create_task(self._session.get(
-                f"{base}{hub_path}/start",
-                params={**params, "transport": "webSockets", "connectionToken": token},
-                headers=_NEGOTIATE_HEADERS,
-            ))
+            # Step 3: start handshake (fire-and-forget, exceptions silenced)
+            async def _do_start() -> None:
+                try:
+                    async with self._session.get(
+                        f"{base}{hub_path}/start",
+                        params={**params, "transport": "webSockets", "connectionToken": token},
+                        headers=_NEGOTIATE_HEADERS,
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ):
+                        pass
+                except Exception:
+                    pass
+
+            asyncio.create_task(_do_start())
             if group == _GROUP:
                 self._state.connected = True
                 self._notify()
