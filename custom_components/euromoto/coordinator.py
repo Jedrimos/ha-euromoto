@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     DOMAIN,
     SCHEDULE_FALLBACK,
+    SCHEDULES_BY_SLUG,
     TRACK_COORDINATES,
     TRACK_DATA_FALLBACK,
     UPDATE_INTERVAL_NORMAL_HOURS,
@@ -234,7 +235,9 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                 except Exception as exc:
                     _LOGGER.debug("Schedule fetch failed: %s", exc)
         if not schedule:
-            schedule = list(SCHEDULE_FALLBACK)
+            # Use track-specific hardcoded schedule before generic fallback
+            slug = _track_slug(current_event) or ""
+            schedule = list(SCHEDULES_BY_SLUG.get(slug, SCHEDULE_FALLBACK))
 
         return EuroMotoData(
             calendar=calendar,

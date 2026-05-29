@@ -1,6 +1,6 @@
 {
   "domain": "euromoto",
-  "name": "EURO MOTO / IDM",
+  "name": "Euro Moto",
   "version": "0.2.0",
   "homeassistant": "2024.1.0",
   "documentation": "https://github.com/Jedrimos/ha-euromoto",
