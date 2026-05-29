@@ -528,7 +528,7 @@ def _next_session(schedule: list[dict], event_date_start: date) -> dict | None:
                 session_end = datetime.combine(session_date, time(h, m))
                 if session_end > now:
                     return {**s, "date": session_date.isoformat()}
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError, KeyError):
                 continue
     return None
 
@@ -630,9 +630,10 @@ class WeekendScheduleSensor(_EuroMotoSensor):
             return {}
 
         def _format(s: dict) -> dict:
-            time_range = s["time_start"]
+            time_start = s.get("time_start", "")
             time_end = s.get("time_end", "")
-            if time_end and time_end > s["time_start"]:
+            time_range = time_start
+            if time_end and time_end > time_start:
                 time_range += f"–{time_end}"
             return {
                 "day": _DAY_DE.get(s.get("day", ""), s.get("day", "")),
