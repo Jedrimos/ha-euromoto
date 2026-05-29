@@ -1,4 +1,4 @@
-"""Config flow for EURO MOTO / IDM."""
+"""Config flow for Euro Moto."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -45,7 +45,7 @@ class EuroMotoConfigFlow(ConfigFlow, domain=DOMAIN):
             selected = [cls for cls in ALL_CLASSES if user_input.get(cls, False)]
             riders = _parse_rider_numbers(user_input.get(CONF_FAVORITE_RIDERS, ""))
             return self.async_create_entry(
-                title="EURO MOTO / IDM",
+                title="Euro Moto",
                 data={CONF_CLASSES: selected, CONF_FAVORITE_RIDERS: riders},
             )
 

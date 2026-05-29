@@ -1,11 +1,6 @@
-# EURO MOTO / IDM Dashboard – Mobile-optimiert
-#
-# INSTALLATION:
-#   Einstellungen → Dashboards → "+ Dashboard hinzufügen" → Erstellen
-#   → Drei-Punkte-Menü → "Dashboard bearbeiten" → Drei-Punkte oben rechts
-#   → "Raw Konfigurationseditor" → diesen Inhalt einfügen → Speichern
+# Euro Moto Dashboard – Mobile-optimiert
 
-title: IDM / EURO MOTO
+title: Euro Moto
 views:
 
   # ============================================================
@@ -215,7 +210,7 @@ views:
       - type: markdown
         content: |
           {%- set st = state_attr('sensor.euromoto_sbk_standings', 'standings') or [] -%}
-          ## 🏆 IDM Superbike
+          ## 🏆 Euro Moto Superbike
           {% if st %}
           {% for r in st -%}
           **{{ r.pos }}.** {{ r.flag }} {{ r.name }} — #{{ r.number }} · {{ r.bike }} · **{{ r.points }} Pkt**
@@ -225,7 +220,7 @@ views:
       - type: markdown
         content: |
           {%- set st = state_attr('sensor.euromoto_ssp_standings', 'standings') or [] -%}
-          ## 🏆 IDM Supersport
+          ## 🏆 Euro Moto Supersport
           {% if st %}
           {% for r in st -%}
           **{{ r.pos }}.** {{ r.flag }} {{ r.name }} — #{{ r.number }} · {{ r.bike }} · **{{ r.points }} Pkt**
@@ -358,7 +353,7 @@ views:
 
       - type: markdown
         content: |
-          ## ℹ️ EURO MOTO / IDM Integration
+          ## ℹ️ Euro Moto Integration
 
           **Aktualisierung:**
           - Normal: alle 6 Stunden

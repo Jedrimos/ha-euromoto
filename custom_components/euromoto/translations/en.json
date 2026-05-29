@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up EURO MOTO / IDM",
+        "title": "Set up Euro Moto",
         "description": "Select the classes and optionally enter favorite rider numbers.",
         "data": {
           "Superbike": "Superbike Standings",
@@ -13,13 +13,13 @@
       }
     },
     "abort": {
-      "single_instance_allowed": "Only one instance of EURO MOTO / IDM is allowed."
+      "single_instance_allowed": "Only one instance of Euro Moto is allowed."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "EURO MOTO / IDM Options",
+        "title": "Euro Moto Options",
         "data": {
           "Superbike": "Superbike Standings",
           "Supersport": "Supersport Standings",
