@@ -631,8 +631,9 @@ class WeekendScheduleSensor(_EuroMotoSensor):
 
         def _format(s: dict) -> dict:
             time_range = s["time_start"]
-            if s.get("time_end"):
-                time_range += f"–{s['time_end']}"
+            time_end = s.get("time_end", "")
+            if time_end and time_end > s["time_start"]:
+                time_range += f"–{time_end}"
             return {
                 "day": _DAY_DE.get(s.get("day", ""), s.get("day", "")),
                 "time": time_range,

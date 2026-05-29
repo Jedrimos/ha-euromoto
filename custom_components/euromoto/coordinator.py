@@ -62,6 +62,23 @@ def _track_slug(event: TrackEvent) -> str | None:
     return event.track_url.rstrip("/").rsplit("/", 1)[-1]
 
 
+def _is_valid_schedule(schedule: list[dict]) -> bool:
+    """Return True only if the schedule looks like real multi-day race data."""
+    if len(schedule) < 3:
+        return False
+    days = {s.get("day") for s in schedule if s.get("day")}
+    if len(days) < 2:
+        return False
+    bad = sum(
+        1 for s in schedule
+        if s.get("time_start") and s.get("time_end")
+        and s["time_end"] <= s["time_start"]
+    )
+    if bad > len(schedule) // 2:
+        return False
+    return True
+
+
 def _best_fallback_key(slug: str, lookup: dict) -> str | None:
     """Find the best matching key in a dict for a URL slug via partial match."""
     if slug in lookup:
@@ -216,6 +233,8 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             try:
                 # 1. MyLaps results server (structured data, most reliable)
                 schedule = await scraper.fetch_schedule_mylaps(slug)
+                if not _is_valid_schedule(schedule):
+                    schedule = []
             except Exception as exc:
                 _LOGGER.debug("MyLaps schedule fetch failed: %s", exc)
             if not schedule:
@@ -225,13 +244,17 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                     if pdf_lines:
                         from .scraper import _parse_schedule as _ps
                         joined = "\n".join(f"<p>{ln}</p>" for ln in pdf_lines)
-                        schedule = _ps(joined)
+                        pdf_schedule = _ps(joined)
+                        if _is_valid_schedule(pdf_schedule):
+                            schedule = pdf_schedule
                 except Exception as exc:
                     _LOGGER.debug("PDF schedule fetch failed: %s", exc)
             if not schedule:
                 # 3. HTML scraping of euromoto.racing (incl. PDF links on track pages)
                 try:
-                    schedule = await scraper.fetch_schedule(current_event)
+                    html_schedule = await scraper.fetch_schedule(current_event)
+                    if _is_valid_schedule(html_schedule):
+                        schedule = html_schedule
                 except Exception as exc:
                     _LOGGER.debug("Schedule fetch failed: %s", exc)
         if not schedule:

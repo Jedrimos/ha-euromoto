@@ -308,10 +308,16 @@ def _parse_mylaps_sessions(html: str) -> list[dict[str, Any]]:
                 cls = label
                 break
 
-        # Extract times if present
+        # Extract times if present – skip entries with no time at all
         times = _TIME_RE.findall(text)
-        time_start = f"{int(times[0][0]):02d}:{times[0][1]}" if times else ""
+        if not times:
+            continue
+        time_start = f"{int(times[0][0]):02d}:{times[0][1]}"
         time_end = f"{int(times[1][0]):02d}:{times[1][1]}" if len(times) >= 2 else ""
+
+        # Reject obviously inverted time ranges
+        if time_end and time_end <= time_start:
+            time_end = ""
 
         # Detect day
         day = "saturday"
@@ -369,10 +375,10 @@ class EuroMotoScraper:
             if exc.status == 404:
                 _LOGGER.debug("Not found (404): %s", url)
             else:
-                _LOGGER.warning("Failed to fetch %s: %s", url, exc)
+                _LOGGER.debug("Failed to fetch %s: %s", url, exc)
             return None
         except Exception as exc:
-            _LOGGER.warning("Failed to fetch %s: %s", url, exc)
+            _LOGGER.debug("Failed to fetch %s: %s", url, exc)
             return None
 
     async def fetch_calendar(self) -> list[TrackEvent]:
@@ -656,6 +662,10 @@ def _parse_schedule(html: str) -> list[dict[str, Any]]:
                 cls = label
                 break
 
+        # Drop inverted time ranges
+        if time_end and time_end <= time_start:
+            time_end = ""
+
         is_race = session.startswith("Race") or session in ("Race 1", "Race 2")
         sessions.append({
             "day": current_day,
@@ -666,8 +676,13 @@ def _parse_schedule(html: str) -> list[dict[str, Any]]:
             "race": is_race,
         })
 
-    # Need at least a handful of sessions to be meaningful
-    return sessions if len(sessions) >= 4 else []
+    # Need at least a handful of sessions spanning at least 2 different days
+    if len(sessions) < 4:
+        return []
+    days_covered = {s["day"] for s in sessions}
+    if len(days_covered) < 2:
+        return []
+    return sessions
 
 
 def _make_event(date_raw: str, name_raw: str, track_url: str | None) -> TrackEvent | None:
