@@ -176,7 +176,9 @@ class EuroMotoLiveTiming:
                 raise
             except Exception as exc:
                 attempts += 1
-                lvl = _LOGGER.warning if attempts == 1 else _LOGGER.debug
+                # INFO is not shown in the HA warning panel; reserve WARNING for
+                # genuinely unexpected errors, not expected 404s when no session runs.
+                lvl = _LOGGER.info if attempts == 1 else _LOGGER.debug
                 lvl(
                     "EuroMoto live timing [%s]: connection failed (attempt %d): %s – retry in %ds",
                     group, attempts, exc, backoff,
@@ -239,14 +241,23 @@ class EuroMotoLiveTiming:
         async with self._session.ws_connect(
             ws_url,
             timeout=aiohttp.ClientTimeout(total=None),
-            heartbeat=30,
+            # heartbeat omitted: aiohttp's internal heartbeat task raises
+            # ClientConnectionResetError on close → "Task exception was never retrieved"
         ) as ws:
-            # Step 3: start handshake (fire-and-forget)
-            asyncio.create_task(self._session.get(
-                f"{base}{hub_path}/start",
-                params={**params, "transport": "webSockets", "connectionToken": token},
-                headers=_NEGOTIATE_HEADERS,
-            ))
+            # Step 3: start handshake (fire-and-forget, exceptions silenced)
+            async def _do_start() -> None:
+                try:
+                    async with self._session.get(
+                        f"{base}{hub_path}/start",
+                        params={**params, "transport": "webSockets", "connectionToken": token},
+                        headers=_NEGOTIATE_HEADERS,
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ):
+                        pass
+                except Exception:
+                    pass
+
+            asyncio.create_task(_do_start())
             if group == _GROUP:
                 self._state.connected = True
                 self._notify()
