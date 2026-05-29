@@ -99,7 +99,7 @@ def _session_to_calendar_event(
         tz = ZoneInfo("Europe/Berlin")
         h_s, m_s = map(int, time_start.split(":"))
         start_dt = datetime(d.year, d.month, d.day, h_s, m_s, tzinfo=tz)
-        if time_end:
+        if time_end and time_end > time_start:
             h_e, m_e = map(int, time_end.split(":"))
             end_dt = datetime(d.year, d.month, d.day, h_e, m_e, tzinfo=tz)
         else:
@@ -143,6 +143,8 @@ class EuroMotoCalendar(CoordinatorEntity[EuroMotoCoordinator], CalendarEntity):
     @property
     def event(self) -> CalendarEvent | None:
         """Return current or next upcoming race weekend event."""
+        if not self.coordinator.data:
+            return None
         today = date.today()
         for i, ev in enumerate(self.coordinator.data.calendar):
             if ev.date_start.date() <= today <= ev.date_end.date():
@@ -165,6 +167,8 @@ class EuroMotoCalendar(CoordinatorEntity[EuroMotoCoordinator], CalendarEntity):
         end_date: datetime,
     ) -> list[CalendarEvent]:
         result: list[CalendarEvent] = []
+        if not self.coordinator.data:
+            return result
         today = date.today()
 
         for i, ev in enumerate(self.coordinator.data.calendar):
