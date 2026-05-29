@@ -25,22 +25,24 @@ def _load_config() -> dict:
     return yaml.safe_load("\n".join(lines))
 
 
+async def _write_dashboard_config(hass: HomeAssistant) -> None:
+    """Overwrite Lovelace storage with our YAML config."""
+    try:
+        store: Store = Store(hass, _STORAGE_VERSION, _STORAGE_KEY)
+        config = await hass.async_add_executor_job(_load_config)
+        await store.async_save({"config": config})
+        _LOGGER.debug(
+            "EuroMoto: wrote dashboard config to storage (%d views)",
+            len(config.get("views", [])),
+        )
+    except Exception as exc:
+        _LOGGER.warning("EuroMoto: could not write dashboard YAML to storage: %s", exc)
+
+
 async def async_register_dashboard(hass: HomeAssistant) -> None:
     """Create the EuroMoto Lovelace dashboard (sidebar entry + config)."""
     try:
-        # 1. Always write YAML config to storage so updates take effect immediately.
-        store: Store = Store(hass, _STORAGE_VERSION, _STORAGE_KEY)
-        try:
-            config = await hass.async_add_executor_job(_load_config)
-            await store.async_save({"config": config})
-            _LOGGER.debug(
-                "EuroMoto: wrote dashboard config to storage (%d views)",
-                len(config.get("views", [])),
-            )
-        except Exception as exc:
-            _LOGGER.warning("EuroMoto: could not write dashboard YAML to storage: %s", exc)
-
-        # 2. Remove any legacy frontend panel left over from earlier installs.
+        # 1. Remove any legacy frontend panel left over from earlier installs.
         #    async_register_built_in_panel bypasses the Lovelace dashboard API so HA
         #    cannot find our config and instead creates an empty placeholder ("Neuer Abschnitt").
         try:
@@ -49,18 +51,23 @@ async def async_register_dashboard(hass: HomeAssistant) -> None:
         except Exception:
             pass
 
-        # 3. Register via DashboardsCollection – the proper Lovelace API.
+        # 2. Register via DashboardsCollection – the proper Lovelace API.
         #    This is identical to Settings → Dashboards → Add Dashboard.
-        #    It registers both the sidebar entry AND wires up config serving from storage.
+        #    It registers the sidebar entry and wires up storage-based config.
+        #    We write our YAML config AFTER registration so it overwrites the empty
+        #    placeholder that HA creates.
         if await _register_via_collection(hass):
+            await _write_dashboard_config(hass)
             return
 
-        # 4. Lovelace not fully initialised yet (called during async_setup_entry before
+        # 3. Lovelace not fully initialised yet (called during async_setup_entry before
         #    HA has finished booting).  Retry once after homeassistant_started.
         _LOGGER.debug("EuroMoto: lovelace not ready yet – retry scheduled after HA start")
 
         async def _retry_on_start(_event: Any) -> None:
-            if not await _register_via_collection(hass):
+            if await _register_via_collection(hass):
+                await _write_dashboard_config(hass)
+            else:
                 _LOGGER.warning(
                     "EuroMoto: dashboard registration still failed after HA start; "
                     "it may appear after the next HA restart."
@@ -76,11 +83,21 @@ async def _register_via_collection(hass: HomeAssistant) -> bool:
     """Register dashboard in hass.data['lovelace'].dashboards. Returns True on success."""
     lovelace = hass.data.get("lovelace")
     if lovelace is None:
+        _LOGGER.debug("EuroMoto: hass.data['lovelace'] not available")
         return False
 
-    # hass.data["lovelace"].dashboards is a DashboardsCollection (StorageCollection)
-    dashboards = getattr(lovelace, "dashboards", None)
+    # hass.data["lovelace"] may be a LovelaceData dataclass OR a plain dict depending on HA version
+    if isinstance(lovelace, dict):
+        dashboards = lovelace.get("dashboards")
+    else:
+        dashboards = getattr(lovelace, "dashboards", None)
+
     if dashboards is None:
+        _LOGGER.debug(
+            "EuroMoto: lovelace.dashboards not found (lovelace type=%s, keys=%s)",
+            type(lovelace).__name__,
+            list(lovelace.keys()) if isinstance(lovelace, dict) else dir(lovelace),
+        )
         return False
 
     try:
@@ -93,15 +110,16 @@ async def _register_via_collection(hass: HomeAssistant) -> bool:
                 existing_paths.add(getattr(item, "url_path", None))
 
         if _DASHBOARD_URL_PATH not in existing_paths:
+            # HA validates with DASHBOARD_CREATE_FIELDS — "mode" is NOT a valid field and
+            # will raise vol.Invalid, so we deliberately omit it here.
             dash_data: dict[str, Any] = {
                 "url_path": _DASHBOARD_URL_PATH,
                 "title": "EuroMoto",
                 "icon": "mdi:racing-helmet",
                 "show_in_sidebar": True,
                 "require_admin": False,
-                "mode": "storage",
             }
-            # HA 2024+ renamed async_create → async_create_item
+            # HA 2024+ uses async_create_item; older versions use async_create
             created = False
             for method_name in ("async_create_item", "async_create"):
                 method = getattr(dashboards, method_name, None)
@@ -115,7 +133,10 @@ async def _register_via_collection(hass: HomeAssistant) -> bool:
                     )
                     break
             if not created:
-                _LOGGER.warning("EuroMoto: DashboardsCollection has no known create method")
+                _LOGGER.debug(
+                    "EuroMoto: DashboardsCollection has no known create method (attrs=%s)",
+                    [a for a in dir(dashboards) if "create" in a.lower()],
+                )
                 return False
         else:
             _LOGGER.debug(

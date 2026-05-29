@@ -146,10 +146,10 @@ class EuroMotoPdfParser:
         except aiohttp.ClientResponseError as exc:
             if exc.status == 404:
                 return None
-            _LOGGER.warning("HTTP error fetching %s: %s", url, exc)
+            _LOGGER.debug("HTTP error fetching %s: %s", url, exc)
             return None
         except Exception as exc:
-            _LOGGER.warning("Error fetching %s: %s", url, exc)
+            _LOGGER.debug("Error fetching %s: %s", url, exc)
             return None
 
     async def fetch_standings(self, cls: str, year: int | None = None) -> list[dict[str, Any]]:

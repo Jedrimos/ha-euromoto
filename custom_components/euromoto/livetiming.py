@@ -176,7 +176,7 @@ class EuroMotoLiveTiming:
                 raise
             except Exception as exc:
                 attempts += 1
-                lvl = _LOGGER.warning if attempts <= 3 else _LOGGER.debug
+                lvl = _LOGGER.warning if attempts == 1 else _LOGGER.debug
                 lvl(
                     "EuroMoto live timing [%s]: connection failed (attempt %d): %s – retry in %ds",
                     group, attempts, exc, backoff,
