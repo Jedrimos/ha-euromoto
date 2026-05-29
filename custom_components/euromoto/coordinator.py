@@ -72,7 +72,7 @@ def _is_valid_schedule(schedule: list[dict]) -> bool:
     bad = sum(
         1 for s in schedule
         if s.get("time_start") and s.get("time_end")
-        and s["time_end"] <= s["time_start"]
+        and s["time_end"] < s["time_start"]
     )
     if bad > len(schedule) // 2:
         return False
@@ -259,7 +259,7 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                     _LOGGER.debug("Schedule fetch failed: %s", exc)
         if not schedule:
             # Use track-specific hardcoded schedule before generic fallback
-            slug = _track_slug(current_event) or ""
+            slug = _track_slug(current_event) or "" if current_event else ""
             schedule = list(SCHEDULES_BY_SLUG.get(slug, SCHEDULE_FALLBACK))
 
         return EuroMotoData(
@@ -275,8 +275,9 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
     def _on_live_update(self, state: LiveTimingState) -> None:
         """Called by EuroMotoLiveTiming whenever new data arrives – push to HA."""
-        if self.data:
-            self.data.live_timing = state
+        if self.data is None:
+            return
+        self.data.live_timing = state
         self.async_set_updated_data(self.data)
 
     async def async_shutdown(self) -> None:

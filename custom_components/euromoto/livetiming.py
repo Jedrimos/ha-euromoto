@@ -424,7 +424,10 @@ class EuroMotoLiveTiming:
         for idx in sorted(self._raw_rows):
             raw = self._raw_rows[idx]
             marker = _get(raw, "marker")
-            status = _MARKER_MAP.get(int(marker), "racing") if marker is not None else "racing"
+            try:
+                status = _MARKER_MAP.get(int(marker), "racing") if marker is not None else "racing"
+            except (ValueError, TypeError):
+                status = "racing"
             try:
                 pos = int(_get(raw, "position") or (idx + 1))
                 last_us = int(_get(raw, "lastroundtime", "last_round_time") or 0)
@@ -490,11 +493,20 @@ class EuroMotoLiveTiming:
             self._notify()
 
     def _handle_heat(self, arg: dict) -> None:
-        f = arg.get("f", -1)
+        f = arg.get("f")
+        try:
+            flag_key = int(f) if f is not None else -1
+        except (ValueError, TypeError):
+            flag_key = -1
+        try:
+            elapsed = int(arg.get("e", 0))
+            time_limit = int(arg.get("lt", 0))
+        except (ValueError, TypeError):
+            elapsed, time_limit = 0, 0
         self._state.session = LiveSession(
             name=str(arg.get("n", "")),
-            flag=_FLAG_MAP.get(int(f) if f is not None else -1, "unknown"),
-            elapsed_us=int(arg.get("e", 0)),
-            time_limit_us=int(arg.get("lt", 0)),
+            flag=_FLAG_MAP.get(flag_key, "unknown"),
+            elapsed_us=elapsed,
+            time_limit_us=time_limit,
         )
         self._notify()

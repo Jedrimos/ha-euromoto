@@ -341,7 +341,11 @@ def _parse_mylaps_sessions(html: str) -> list[dict[str, Any]]:
             "race": is_race,
         })
 
-    return sessions if len(sessions) >= 3 else []
+    if len(sessions) < 3:
+        return []
+    if len({s["day"] for s in sessions}) < 2:
+        return []
+    return sessions
 
 
 _SCHEDULE_PDF_KEYWORDS = ("zeitplan", "timetable", "programm", "schedule", "fahrplan")
