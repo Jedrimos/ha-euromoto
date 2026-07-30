@@ -139,6 +139,9 @@ class EuroMotoLiveTiming:
         self._task: asyncio.Task | None = None
         self._ticker_task: asyncio.Task | None = None
         self._callbacks: list[Callable[[LiveTimingState], None]] = []
+        self._background_tasks: set[asyncio.Task] = set()
+        self._hub_path_cached = False
+        self._cached_hub_path: str | None = None
 
     @property
     def state(self) -> LiveTimingState:
@@ -198,7 +201,21 @@ class EuroMotoLiveTiming:
             backoff = min(backoff * 2, 300)
 
     async def _discover_hub_path(self) -> str | None:
-        """Fetch the page source and extract the SignalR hub path from the JS bundle."""
+        """Fetch the page source and extract the SignalR hub path from the JS bundle.
+
+        Cached after the first attempt (success or failure) so repeated reconnects
+        (this runs once per group per reconnect cycle) don't re-fetch the homepage
+        and up to 8 JS bundles on every retry.
+        """
+        if self._hub_path_cached:
+            return self._cached_hub_path
+
+        result = await self._discover_hub_path_uncached()
+        self._cached_hub_path = result
+        self._hub_path_cached = True
+        return result
+
+    async def _discover_hub_path_uncached(self) -> str | None:
         import re
 
         try:
@@ -321,7 +338,9 @@ class EuroMotoLiveTiming:
                 except Exception:
                     pass
 
-            asyncio.create_task(_do_start())
+            start_task = asyncio.create_task(_do_start())
+            self._background_tasks.add(start_task)
+            start_task.add_done_callback(self._background_tasks.discard)
             if group == _GROUP:
                 self._state.connected = True
                 self._notify()
@@ -362,7 +381,9 @@ class EuroMotoLiveTiming:
             self._handle_changes(arg)
         elif method in ("h_h", "h_i"):
             self._handle_heat(arg)
-        elif method in ("t_m", "t_i", "ticker"):
+        elif method == "t_i":
+            self._handle_ticker(arg, replace=True)
+        elif method in ("t_m", "ticker"):
             self._handle_ticker(arg)
 
     def _handle_compressed(self, payload: str) -> None:
@@ -394,13 +415,20 @@ class EuroMotoLiveTiming:
             self._handle_layout(arg["l"])
         self._raw_rows.clear()
         for change in arg.get("r", []):
-            self._apply_change(change)
+            self._safe_apply_change(change)
         self._rebuild_rows()
 
     def _handle_changes(self, changes: list) -> None:
         for change in changes:
-            self._apply_change(change)
+            self._safe_apply_change(change)
         self._rebuild_rows()
+
+    def _safe_apply_change(self, change: list) -> None:
+        """Apply one row/col update; a single malformed entry must not drop the whole batch."""
+        try:
+            self._apply_change(change)
+        except (ValueError, TypeError, IndexError) as exc:
+            _LOGGER.debug("Skipping malformed row change %r: %s", change, exc)
 
     def _apply_change(self, change: list) -> None:
         if len(change) < 3:
@@ -449,9 +477,17 @@ class EuroMotoLiveTiming:
         self._state.rows = rows
         self._notify()
 
-    def _handle_ticker(self, arg: Any) -> None:
-        """Handle ticker/incident messages from the t channel."""
+    def _handle_ticker(self, arg: Any, replace: bool = False) -> None:
+        """Handle ticker/incident messages from the t channel.
+
+        `replace=True` (init frame "t_i") resets the incident list first – otherwise
+        every reconnect during a race weekend would re-prepend the same history,
+        duplicating entries in LiveIncidentsSensor.
+        """
         import datetime as _dt
+
+        if replace:
+            self._state.incidents = []
 
         if isinstance(arg, dict):
             items = arg.get("m", arg.get("items", [arg]))

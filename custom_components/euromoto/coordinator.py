@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    DAY_MAP,
     DOMAIN,
     SCHEDULE_FALLBACK,
     SCHEDULES_BY_SLUG,
@@ -261,6 +262,14 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             # Use track-specific hardcoded schedule before generic fallback
             slug = _track_slug(current_event) or "" if current_event else ""
             schedule = list(SCHEDULES_BY_SLUG.get(slug, SCHEDULE_FALLBACK))
+
+        # Consumers (sensor._next_session/_upcoming_session) return the first
+        # match in list order, not the chronological minimum – scraped sources
+        # aren't guaranteed to come out in time order, so enforce it once here.
+        schedule = sorted(
+            schedule,
+            key=lambda s: (DAY_MAP.get(s.get("day", ""), 99), s.get("time_start", "")),
+        )
 
         return EuroMotoData(
             calendar=calendar,

@@ -184,7 +184,8 @@ class EuroMotoPdfParser:
         if year is None:
             year = dt.date.today().year
         if round_num is None:
-            # Try the last 3 rounds (most recent first)
+            # Caller doesn't know the current round number (calendar fetch runs in
+            # parallel) – probe every possible round this season, most recent first.
             rounds_to_try = list(range(8, 0, -1))
         else:
             rounds_to_try = [round_num]

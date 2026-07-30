@@ -53,6 +53,8 @@ def _migrate_entity_ids(hass: HomeAssistant, entry_id: str) -> None:
     for reg_entry in er.async_entries_for_config_entry(registry, entry_id):
         uid = reg_entry.unique_id
         old_id = reg_entry.entity_id
+        if not uid:
+            continue
 
         target = _UID_TO_ENTITY_ID.get(uid)
         if not target:
