@@ -14,6 +14,7 @@ from .const import (
     GRID_PDF_URL_TEMPLATES,
     NATION_FLAGS,
     SCHEDULE_PDF_URL_TEMPLATES,
+    SCRAPER_HEADERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -136,10 +137,16 @@ class EuroMotoPdfParser:
         self._session = session
 
     async def _fetch_bytes(self, url: str) -> bytes | None:
-        """Download a URL and return raw bytes, or None on 404/error."""
+        """Download a URL and return raw bytes, or None on 404/error.
+
+        Sends the same browser-like headers as scraper.py - without them,
+        results.bike-promotion.com (like euromoto.racing) can reject the
+        default aiohttp User-Agent, making every PDF fetch fail regardless
+        of whether the URL itself is correct.
+        """
         try:
             async with self._session.get(
-                url, timeout=aiohttp.ClientTimeout(total=60)
+                url, headers=SCRAPER_HEADERS, timeout=aiohttp.ClientTimeout(total=60)
             ) as resp:
                 if resp.status == 404:
                     return None
