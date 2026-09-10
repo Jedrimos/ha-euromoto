@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    DAY_MAP,
     DOMAIN,
     SCHEDULE_FALLBACK,
     SCHEDULES_BY_SLUG,
@@ -72,7 +73,7 @@ def _is_valid_schedule(schedule: list[dict]) -> bool:
     bad = sum(
         1 for s in schedule
         if s.get("time_start") and s.get("time_end")
-        and s["time_end"] <= s["time_start"]
+        and s["time_end"] < s["time_start"]
     )
     if bad > len(schedule) // 2:
         return False
@@ -155,18 +156,26 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
         calendar = calendar_task.result()
 
-        # Enrich events with track details; cache scraped data to avoid re-fetching
+        # Enrich events with track details; cache scraped data to avoid re-fetching.
+        # Only cache a genuinely successful scrape - if it comes back empty (site
+        # down, blocked, transient error), retry on the next refresh instead of
+        # freezing fallback-only data forever.
         for event in calendar:
             slug = _track_slug(event)
             if slug:
-                if slug not in self._track_details_cache:
+                cached = self._track_details_cache.get(slug)
+                if cached is not None:
+                    event.details = cached
+                else:
                     try:
                         scraped = await scraper.fetch_track_details(slug)
                     except Exception as exc:
                         _LOGGER.debug("Could not scrape details for %s: %s", slug, exc)
                         scraped = {}
-                    self._track_details_cache[slug] = _merge_fallback(scraped, slug)
-                event.details = self._track_details_cache[slug]
+                    merged = _merge_fallback(scraped, slug)
+                    event.details = merged
+                    if scraped:
+                        self._track_details_cache[slug] = merged
             elif event.name:
                 # Try to match fallback by name
                 name_slug = event.name.lower().replace(" ", "").replace("ü", "ue")
@@ -178,13 +187,17 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         standings = {cls: task.result() for cls, task in standings_tasks.items()}
         grid = {cls: task.result() for cls, task in grid_tasks.items()}
 
-        # Rider entries (names, teams, bikes from website) – cached to reduce HTTP load
-        if self._rider_entries_cache is None:
+        # Rider entries (names, teams, bikes from website) – cached to reduce HTTP
+        # load once a fetch actually succeeds. An empty result (site down/blocked,
+        # parsing failure) is NOT cached, so the next refresh retries instead of
+        # leaving rider names permanently empty for the rest of the HA session.
+        if not self._rider_entries_cache:
             try:
-                self._rider_entries_cache = await scraper.fetch_rider_entries()
+                fetched = await scraper.fetch_rider_entries()
             except Exception as exc:
                 _LOGGER.debug("Rider entries fetch failed: %s", exc)
-                self._rider_entries_cache = []
+                fetched = []
+            self._rider_entries_cache = fetched
         rider_entries = self._rider_entries_cache
 
         # Weather for the next event's track
@@ -259,8 +272,16 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
                     _LOGGER.debug("Schedule fetch failed: %s", exc)
         if not schedule:
             # Use track-specific hardcoded schedule before generic fallback
-            slug = _track_slug(current_event) or ""
+            slug = _track_slug(current_event) or "" if current_event else ""
             schedule = list(SCHEDULES_BY_SLUG.get(slug, SCHEDULE_FALLBACK))
+
+        # Consumers (sensor._next_session/_upcoming_session) return the first
+        # match in list order, not the chronological minimum – scraped sources
+        # aren't guaranteed to come out in time order, so enforce it once here.
+        schedule = sorted(
+            schedule,
+            key=lambda s: (DAY_MAP.get(s.get("day", ""), 99), s.get("time_start", "")),
+        )
 
         return EuroMotoData(
             calendar=calendar,
@@ -275,8 +296,9 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
     def _on_live_update(self, state: LiveTimingState) -> None:
         """Called by EuroMotoLiveTiming whenever new data arrives – push to HA."""
-        if self.data:
-            self.data.live_timing = state
+        if self.data is None:
+            return
+        self.data.live_timing = state
         self.async_set_updated_data(self.data)
 
     async def async_shutdown(self) -> None:

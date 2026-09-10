@@ -46,7 +46,7 @@ MYLAPS_EVENT_IDS: dict[str, int] = {
     # Other 2026 IDs TBD – will be discovered automatically via the results index
 }
 PDF_URL_TEMPLATE = (
-    "{base}/{year}/01%20IDM/IDM%20Punktest%C3%A4nde%20IDM_{cls}.pdf"
+    "{base}/{year}/{round:02d}%20IDM/IDM%20Punktest%C3%A4nde%20IDM_{cls}.pdf"
 )
 
 KNOWN_TRACK_SLUGS = [

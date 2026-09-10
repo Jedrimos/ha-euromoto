@@ -31,9 +31,11 @@ def _flag(nation: str | None) -> str:
     return NATION_FLAGS.get(nation.upper(), "")
 
 
-def _pdf_url(cls: str, year: int) -> str:
+def _pdf_url(cls: str, year: int, round_num: int) -> str:
     slug = _CLASS_SLUG_MAP.get(cls, f"IDM_{cls}")
-    return PDF_URL_TEMPLATE.format(base=PDF_BASE_URL, year=year, cls=slug.split("_")[1])
+    return PDF_URL_TEMPLATE.format(
+        base=PDF_BASE_URL, year=year, cls=slug.split("_")[1], round=round_num
+    )
 
 
 def _grid_urls(cls: str, year: int, round_num: int) -> list[str]:
@@ -152,24 +154,39 @@ class EuroMotoPdfParser:
             _LOGGER.debug("Error fetching %s: %s", url, exc)
             return None
 
-    async def fetch_standings(self, cls: str, year: int | None = None) -> list[dict[str, Any]]:
-        """Download and parse the championship standings PDF."""
+    async def fetch_standings(
+        self, cls: str, year: int | None = None, round_num: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Download and parse the championship standings PDF.
+
+        Standings PDFs are published per-round with the cumulative points total
+        up to that round (same "{round:02d} IDM" folder convention as the grid
+        and schedule PDFs) – there is no fixed, always-current URL. When the
+        round number isn't known yet, probe every possible round this season,
+        most recent first, and use the first one found (the latest cumulative
+        total available).
+        """
         import datetime as dt
 
         if year is None:
             year = dt.date.today().year
+        rounds_to_try = [round_num] if round_num is not None else list(range(8, 0, -1))
 
-        url = _pdf_url(cls, year)
-        _LOGGER.debug("Fetching standings PDF: %s", url)
-        data = await self._fetch_bytes(url)
-        if data is None:
-            _LOGGER.info("Standings PDF for %s %d not yet available", cls, year)
-            return []
-        try:
-            return _parse_standings_pdf(data)
-        except Exception as exc:
-            _LOGGER.error("Error parsing standings PDF for %s %d: %s", cls, year, exc)
-            return []
+        for rnd in rounds_to_try:
+            url = _pdf_url(cls, year, rnd)
+            data = await self._fetch_bytes(url)
+            if data is None:
+                continue
+            _LOGGER.debug("Found standings PDF at %s", url)
+            try:
+                rows = _parse_standings_pdf(data)
+                if rows:
+                    return rows
+            except Exception as exc:
+                _LOGGER.error("Error parsing standings PDF %s: %s", url, exc)
+
+        _LOGGER.info("No standings PDF found for %s %d", cls, year)
+        return []
 
     async def fetch_starting_grid(
         self, cls: str, year: int | None = None, round_num: int | None = None
@@ -184,7 +201,8 @@ class EuroMotoPdfParser:
         if year is None:
             year = dt.date.today().year
         if round_num is None:
-            # Try the last 3 rounds (most recent first)
+            # Caller doesn't know the current round number (calendar fetch runs in
+            # parallel) – probe every possible round this season, most recent first.
             rounds_to_try = list(range(8, 0, -1))
         else:
             rounds_to_try = [round_num]
