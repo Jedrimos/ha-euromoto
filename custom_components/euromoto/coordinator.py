@@ -156,18 +156,26 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
         calendar = calendar_task.result()
 
-        # Enrich events with track details; cache scraped data to avoid re-fetching
+        # Enrich events with track details; cache scraped data to avoid re-fetching.
+        # Only cache a genuinely successful scrape - if it comes back empty (site
+        # down, blocked, transient error), retry on the next refresh instead of
+        # freezing fallback-only data forever.
         for event in calendar:
             slug = _track_slug(event)
             if slug:
-                if slug not in self._track_details_cache:
+                cached = self._track_details_cache.get(slug)
+                if cached is not None:
+                    event.details = cached
+                else:
                     try:
                         scraped = await scraper.fetch_track_details(slug)
                     except Exception as exc:
                         _LOGGER.debug("Could not scrape details for %s: %s", slug, exc)
                         scraped = {}
-                    self._track_details_cache[slug] = _merge_fallback(scraped, slug)
-                event.details = self._track_details_cache[slug]
+                    merged = _merge_fallback(scraped, slug)
+                    event.details = merged
+                    if scraped:
+                        self._track_details_cache[slug] = merged
             elif event.name:
                 # Try to match fallback by name
                 name_slug = event.name.lower().replace(" ", "").replace("ü", "ue")
@@ -179,13 +187,17 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         standings = {cls: task.result() for cls, task in standings_tasks.items()}
         grid = {cls: task.result() for cls, task in grid_tasks.items()}
 
-        # Rider entries (names, teams, bikes from website) – cached to reduce HTTP load
-        if self._rider_entries_cache is None:
+        # Rider entries (names, teams, bikes from website) – cached to reduce HTTP
+        # load once a fetch actually succeeds. An empty result (site down/blocked,
+        # parsing failure) is NOT cached, so the next refresh retries instead of
+        # leaving rider names permanently empty for the rest of the HA session.
+        if not self._rider_entries_cache:
             try:
-                self._rider_entries_cache = await scraper.fetch_rider_entries()
+                fetched = await scraper.fetch_rider_entries()
             except Exception as exc:
                 _LOGGER.debug("Rider entries fetch failed: %s", exc)
-                self._rider_entries_cache = []
+                fetched = []
+            self._rider_entries_cache = fetched
         rider_entries = self._rider_entries_cache
 
         # Weather for the next event's track
