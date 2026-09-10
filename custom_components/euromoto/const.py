@@ -43,6 +43,8 @@ PDF_BASE_URL = "https://results.bike-promotion.com/Results/Championship%20scores
 # Update these IDs each season by checking the results page.
 MYLAPS_EVENT_IDS: dict[str, int] = {
     "sachsenring":  3496488,
+    "most":         3575802,
+    "nuerburgring": 3687531,
     # Other 2026 IDs TBD – will be discovered automatically via the results index
 }
 PDF_URL_TEMPLATE = (
