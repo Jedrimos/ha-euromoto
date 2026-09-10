@@ -43,10 +43,15 @@ PDF_BASE_URL = "https://results.bike-promotion.com/Results/Championship%20scores
 # Update these IDs each season by checking the results page.
 MYLAPS_EVENT_IDS: dict[str, int] = {
     "sachsenring":  3496488,
+    "most":         3575802,
+    "nuerburgring": 3687531,
     # Other 2026 IDs TBD – will be discovered automatically via the results index
 }
+# Confirmed against results.bike-promotion.com's own file browser: a single
+# continuously-updated cumulative standings PDF per class lives directly under
+# "01 EURO MOTO" (no round-numbered subfolder, no "IDM" branding).
 PDF_URL_TEMPLATE = (
-    "{base}/{year}/{round:02d}%20IDM/IDM%20Punktest%C3%A4nde%20IDM_{cls}.pdf"
+    "{base}/{year}/01%20EURO%20MOTO/Punktest%C3%A4nde%20EURO%20MOTO_{cls}.pdf"
 )
 
 KNOWN_TRACK_SLUGS = [

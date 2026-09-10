@@ -32,11 +32,8 @@ def _flag(nation: str | None) -> str:
     return NATION_FLAGS.get(nation.upper(), "")
 
 
-def _pdf_url(cls: str, year: int, round_num: int) -> str:
-    slug = _CLASS_SLUG_MAP.get(cls, f"IDM_{cls}")
-    return PDF_URL_TEMPLATE.format(
-        base=PDF_BASE_URL, year=year, cls=slug.split("_")[1], round=round_num
-    )
+def _pdf_url(cls: str, year: int) -> str:
+    return PDF_URL_TEMPLATE.format(base=PDF_BASE_URL, year=year, cls=cls.upper())
 
 
 def _grid_urls(cls: str, year: int, round_num: int) -> list[str]:
@@ -161,39 +158,30 @@ class EuroMotoPdfParser:
             _LOGGER.debug("Error fetching %s: %s", url, exc)
             return None
 
-    async def fetch_standings(
-        self, cls: str, year: int | None = None, round_num: int | None = None
-    ) -> list[dict[str, Any]]:
+    async def fetch_standings(self, cls: str, year: int | None = None) -> list[dict[str, Any]]:
         """Download and parse the championship standings PDF.
 
-        Standings PDFs are published per-round with the cumulative points total
-        up to that round (same "{round:02d} IDM" folder convention as the grid
-        and schedule PDFs) – there is no fixed, always-current URL. When the
-        round number isn't known yet, probe every possible round this season,
-        most recent first, and use the first one found (the latest cumulative
-        total available).
+        Confirmed against the site's own file browser (results.bike-promotion.com
+        /#Results/Championship scores/{year}/01 EURO MOTO/): this is a single
+        continuously-updated cumulative PDF per class directly under "01 EURO
+        MOTO" - not split by round, and not "IDM"-named (that branding was
+        dropped season-wide).
         """
         import datetime as dt
 
         if year is None:
             year = dt.date.today().year
-        rounds_to_try = [round_num] if round_num is not None else list(range(8, 0, -1))
 
-        for rnd in rounds_to_try:
-            url = _pdf_url(cls, year, rnd)
-            data = await self._fetch_bytes(url)
-            if data is None:
-                continue
-            _LOGGER.debug("Found standings PDF at %s", url)
-            try:
-                rows = _parse_standings_pdf(data)
-                if rows:
-                    return rows
-            except Exception as exc:
-                _LOGGER.error("Error parsing standings PDF %s: %s", url, exc)
-
-        _LOGGER.info("No standings PDF found for %s %d", cls, year)
-        return []
+        url = _pdf_url(cls, year)
+        data = await self._fetch_bytes(url)
+        if data is None:
+            _LOGGER.info("Standings PDF for %s %d not yet available at %s", cls, year, url)
+            return []
+        try:
+            return _parse_standings_pdf(data)
+        except Exception as exc:
+            _LOGGER.error("Error parsing standings PDF %s: %s", url, exc)
+            return []
 
     async def fetch_starting_grid(
         self, cls: str, year: int | None = None, round_num: int | None = None
