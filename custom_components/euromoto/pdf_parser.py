@@ -183,13 +183,30 @@ class EuroMotoPdfParser:
             _LOGGER.error("Error parsing standings PDF %s: %s", url, exc)
             return []
 
+    async def fetch_grid_pdf_at(self, url: str) -> list[dict[str, Any]]:
+        """Download and parse a starting-grid PDF at an already-known URL.
+
+        Used with EuroMotoScraper.discover_grid_pdf_url(), which crawls the
+        site's real directory tree instead of guessing a templated path.
+        """
+        data = await self._fetch_bytes(url)
+        if data is None:
+            return []
+        try:
+            return _parse_grid_pdf(data)
+        except Exception as exc:
+            _LOGGER.warning("Error parsing grid PDF %s: %s", url, exc)
+            return []
+
     async def fetch_starting_grid(
         self, cls: str, year: int | None = None, round_num: int | None = None
     ) -> list[dict[str, Any]]:
         """Download and parse the most recent starting grid / qualifying PDF.
 
-        Tries multiple URL patterns and multiple recent round numbers.
-        Returns empty list if nothing is found (e.g. before the season starts).
+        Fallback path only (legacy templated guess) - prefer discovering the
+        real URL via EuroMotoScraper.discover_grid_pdf_url() + fetch_grid_pdf_at()
+        when a round number is known. Tries multiple URL patterns and multiple
+        recent round numbers. Returns empty list if nothing is found.
         """
         import datetime as dt
 

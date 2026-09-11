@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+from urllib.parse import urljoin
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -16,6 +17,7 @@ from .const import (
     CALENDAR_URL,
     COUNTRY_HINTS,
     MYLAPS_EVENT_IDS,
+    OFFICIAL_RESULTS_URL,
     RESULTS_BASE_URL,
     RIDERS_CLASS_URLS,
     RIDERS_URL_CANDIDATES,
@@ -511,6 +513,76 @@ class EuroMotoScraper:
             except Exception as exc:
                 _LOGGER.debug("MyLaps parse failed for %s: %s", url, exc)
         return []
+
+    async def discover_grid_pdf_url(self, round_num: int, cls: str, year: int) -> str | None:
+        """Crawl the site's own directory tree to find a starting-grid PDF.
+
+        Confirmed structure (from the site's own file browser):
+        01 EURO MOTO/{year}/EURO MOTO-<round> <Track> (<dates>)/EURO MOTO <CLASS>/
+        Race1/Grid/<file>.pdf - the round folder name embeds the exact race
+        weekend dates, which we don't reliably know in advance, so this is
+        discovered by matching link text/href at each level rather than
+        templated directly.
+        """
+        base = f"{OFFICIAL_RESULTS_URL}/{year}"
+        round_url = await self._find_link_in_dir(base, f"euro moto-{round_num:02d}")
+        if not round_url:
+            return None
+        class_url = await self._find_link_in_dir(round_url, f"euro moto {cls.lower()}")
+        if not class_url:
+            return None
+        race_url = await self._find_link_in_dir(class_url, "race1")
+        if not race_url:
+            return None
+        grid_url = await self._find_link_in_dir(race_url, "grid")
+        if not grid_url:
+            return None
+        return await self._find_best_pdf_in_dir(grid_url)
+
+    async def _find_link_in_dir(self, dir_url: str, needle: str) -> str | None:
+        """Return the absolute URL of the first <a> in a directory listing whose
+        visible text or href contains `needle` (case-insensitive)."""
+        html = await self._get(dir_url)
+        if not html:
+            return None
+        soup = BeautifulSoup(html, "html.parser")
+        needle = needle.lower()
+        for a in soup.find_all("a", href=True):
+            href: str = a["href"]
+            text = a.get_text(strip=True).lower()
+            if needle in text or needle in href.lower():
+                return href if href.startswith("http") else urljoin(dir_url.rstrip("/") + "/", href)
+        return None
+
+    async def _find_best_pdf_in_dir(self, dir_url: str) -> str | None:
+        """Return the most authoritative PDF link in a directory listing.
+
+        Prefers a "final" > "amended" variant over the plain one, and a
+        portrait file over a "Landscape" duplicate (matches the naming pattern
+        seen on the site's own race-result folders).
+        """
+        html = await self._get(dir_url)
+        if not html:
+            return None
+        soup = BeautifulSoup(html, "html.parser")
+        candidates: list[str] = []
+        for a in soup.find_all("a", href=True):
+            href: str = a["href"]
+            if href.lower().endswith(".pdf"):
+                candidates.append(href if href.startswith("http") else urljoin(dir_url + "/", href))
+        if not candidates:
+            return None
+
+        def _score(u: str) -> tuple[int, int, int]:
+            lu = u.lower()
+            return (
+                0 if "final" in lu else 1,
+                0 if "amended" in lu else 1,
+                0 if "landscape" in lu else 1,
+            )
+
+        candidates.sort(key=_score)
+        return candidates[0]
 
     async def _fetch_schedule_pdf(self, url: str) -> list[dict[str, Any]]:
         """Download a PDF and try to extract schedule sessions from its text."""

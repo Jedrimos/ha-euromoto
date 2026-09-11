@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import pytest
 
+from custom_components.euromoto.const import OFFICIAL_RESULTS_URL
 from custom_components.euromoto.scraper import (
+    EuroMotoScraper,
     _calendar_fallback,
     _parse_calendar,
     _parse_date_range,
@@ -200,3 +202,76 @@ class TestCalendarFallback:
         assert len(events) >= 2
         names = [e.name for e in events]
         assert any("Sachsenring" in n for n in names)
+
+
+class TestGridDiscovery:
+    """discover_grid_pdf_url() walks the real 5-level directory tree confirmed
+    via user-provided screenshots: 01 EURO MOTO/{year}/EURO MOTO-<round> <track>
+    (<dates>)/EURO MOTO <CLASS>/Race1/Grid/<file>.pdf. The round folder name
+    embeds exact race weekend dates we can't predict, so each level is
+    discovered by matching link text/href rather than templated directly."""
+
+    def _scraper_with_pages(self, pages: dict[str, str]) -> EuroMotoScraper:
+        scraper = EuroMotoScraper(session=None)
+
+        async def fake_get(url: str) -> str | None:
+            return pages.get(url)
+
+        scraper._get = fake_get
+        return scraper
+
+    @pytest.mark.asyncio
+    async def test_walks_full_tree_and_prefers_final_pdf(self):
+        base = f"{OFFICIAL_RESULTS_URL}/2026"
+        round_url = f"{base}/EURO MOTO-06 Nuerburgring (03.09.-06.09.2026)/"
+        class_url = f"{round_url}EURO MOTO SUPERBIKE/"
+        race_url = f"{class_url}Race1/"
+        grid_url = f"{race_url}Grid/"
+
+        pages = {
+            base: '<a href="EURO MOTO-06 Nuerburgring (03.09.-06.09.2026)/">round</a>',
+            round_url: '<a href="EURO MOTO SUPERBIKE/">class</a>',
+            class_url: '<a href="Race1/">race</a>',
+            race_url: '<a href="Grid/">grid</a>',
+            grid_url: (
+                '<a href="2026-09-05_EURO_MOTO_SUPERBIKE_Race1_Grid.pdf">plain</a>'
+                '<a href="2026-09-05_EURO_MOTO_SUPERBIKE_Race1_Grid - amended - final.pdf">final</a>'
+            ),
+        }
+        scraper = self._scraper_with_pages(pages)
+        url = await scraper.discover_grid_pdf_url(6, "Superbike", 2026)
+
+        assert url is not None
+        assert url.endswith("amended - final.pdf")
+        assert url.startswith(grid_url)
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_round_folder_not_found(self):
+        base = f"{OFFICIAL_RESULTS_URL}/2026"
+        pages = {base: '<a href="EURO MOTO-01 Sachsenring (08.05.-10.05.2026)/">round 1 only</a>'}
+        scraper = self._scraper_with_pages(pages)
+
+        url = await scraper.discover_grid_pdf_url(6, "Superbike", 2026)
+
+        assert url is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_grid_folder_has_no_pdfs(self):
+        base = f"{OFFICIAL_RESULTS_URL}/2026"
+        round_url = f"{base}/EURO MOTO-01 Sachsenring (08.05.-10.05.2026)/"
+        class_url = f"{round_url}EURO MOTO SUPERBIKE/"
+        race_url = f"{class_url}Race1/"
+        grid_url = f"{race_url}Grid/"
+
+        pages = {
+            base: '<a href="EURO MOTO-01 Sachsenring (08.05.-10.05.2026)/">round</a>',
+            round_url: '<a href="EURO MOTO SUPERBIKE/">class</a>',
+            class_url: '<a href="Race1/">race</a>',
+            race_url: '<a href="Grid/">grid</a>',
+            grid_url: '<a href="readme.txt">not a pdf</a>',
+        }
+        scraper = self._scraper_with_pages(pages)
+
+        url = await scraper.discover_grid_pdf_url(1, "Superbike", 2026)
+
+        assert url is None

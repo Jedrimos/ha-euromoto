@@ -37,6 +37,11 @@ RIDERS_CLASS_URLS: dict[str, str] = {
 
 RESULTS_BASE_URL = "https://results.bike-promotion.com"
 PDF_BASE_URL = "https://results.bike-promotion.com/Results/Championship%20scores"
+# Per-round race weekend results (grid, lap times, race results) - confirmed
+# directory tree: {OFFICIAL_RESULTS_URL}/{year}/EURO MOTO-<round> <Track> (<dates>)/
+# EURO MOTO <CLASS>/Race1/Grid/<file>.pdf - crawled, not templated, since the
+# round folder name embeds the exact race weekend dates.
+OFFICIAL_RESULTS_URL = "https://results.bike-promotion.com/Results/Official%20results/01%20EURO%20MOTO"
 
 # MyLaps event IDs for each IDM round (from results.bike-promotion.com/?mylaps=type,event,eventid,X)
 # Used to fetch live session schedule from the results server.

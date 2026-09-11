@@ -130,6 +130,27 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             self._session = aiohttp.ClientSession()
         return self._session
 
+    async def _fetch_grid(
+        self,
+        scraper: EuroMotoScraper,
+        pdf_parser: EuroMotoPdfParser,
+        cls: str,
+        year: int,
+        round_num: int | None,
+    ) -> list[dict[str, Any]]:
+        """Discover the real grid PDF via the site's directory tree first;
+        fall back to the legacy templated guess if discovery fails."""
+        if round_num:
+            try:
+                url = await scraper.discover_grid_pdf_url(round_num, cls, year)
+                if url:
+                    rows = await pdf_parser.fetch_grid_pdf_at(url)
+                    if rows:
+                        return rows
+            except Exception as exc:
+                _LOGGER.debug("Grid discovery failed for %s round %d: %s", cls, round_num, exc)
+        return await pdf_parser.fetch_starting_grid(cls, year, round_num)
+
     async def _async_update_data(self) -> EuroMotoData:
         import datetime as dt
 
@@ -139,22 +160,36 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
         year = dt.date.today().year
 
         try:
+            calendar = await scraper.fetch_calendar()
+        except Exception as exc:
+            raise UpdateFailed(f"Calendar fetch failed: {exc}") from exc
+
+        # Round number = position in sorted calendar (1-based) of the current/next
+        # event - computed here (not inside the parallel fetch below) so grid
+        # discovery and the schedule section further down can both use it.
+        current_event = _next_event(calendar)
+        round_num: int | None = None
+        if current_event:
+            round_num = next(
+                (i + 1 for i, e in enumerate(calendar) if e is current_event), 1
+            )
+
+        try:
             async with asyncio.TaskGroup() as tg:
-                calendar_task = tg.create_task(scraper.fetch_calendar())
                 standings_tasks = {
                     cls: tg.create_task(pdf_parser.fetch_standings(cls, year))
                     for cls in self._enabled_classes
                 }
                 grid_tasks = {
-                    cls: tg.create_task(pdf_parser.fetch_starting_grid(cls, year))
+                    cls: tg.create_task(
+                        self._fetch_grid(scraper, pdf_parser, cls, year, round_num)
+                    )
                     for cls in self._enabled_classes
                 }
         except* Exception as eg:
             for exc in eg.exceptions:
                 _LOGGER.error("Error during parallel data fetch: %s", exc)
             raise UpdateFailed(f"Data fetch failed: {eg.exceptions[0]}") from eg.exceptions[0]
-
-        calendar = calendar_task.result()
 
         # Enrich events with track details; cache scraped data to avoid re-fetching.
         # Only cache a genuinely successful scrape - if it comes back empty (site
@@ -202,18 +237,17 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
 
         # Weather for the next event's track
         track_weather: dict[str, Any] = {}
-        next_ev = _next_event(calendar)
-        if next_ev:
-            slug = _track_slug(next_ev)
+        if current_event:
+            slug = _track_slug(current_event)
             coord_key = _best_fallback_key(slug or "", TRACK_COORDINATES) if slug else None
             coords = TRACK_COORDINATES.get(coord_key) if coord_key else None
             if coords:
                 try:
                     track_weather = await fetch_track_weather(
-                        session, coords[0], coords[1], next_ev.name
+                        session, coords[0], coords[1], current_event.name
                     )
                 except Exception as exc:
-                    _LOGGER.debug("Weather fetch failed for %s: %s", next_ev.name, exc)
+                    _LOGGER.debug("Weather fetch failed for %s: %s", current_event.name, exc)
 
         is_race_wknd = _is_race_weekend(calendar)
         self.update_interval = timedelta(
@@ -234,14 +268,10 @@ class EuroMotoCoordinator(DataUpdateCoordinator[EuroMotoData]):
             if self._live_timing is not None:
                 await self._live_timing.async_stop()
 
-        # Schedule for the current/next race weekend
+        # Schedule for the current/next race weekend (current_event/round_num
+        # already computed above, ahead of the parallel standings/grid fetch)
         schedule: list[dict[str, Any]] = []
-        current_event = _next_event(calendar)
         if current_event:
-            # Round number = position in sorted calendar (1-based)
-            round_num = next(
-                (i + 1 for i, e in enumerate(calendar) if e is current_event), 1
-            )
             slug = _track_slug(current_event) or ""
             try:
                 # 1. MyLaps results server (structured data, most reliable)
